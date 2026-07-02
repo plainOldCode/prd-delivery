@@ -1,16 +1,16 @@
-# PRD Delivery Backend + Frontend
+# PRD Delivery
 
-Lightweight **Hono (Bun)** backend / **React (Vite)** frontend — originally migrated from Kotlin/Spring Boot. SQLite 기반 CRUD API + SPA 프론트엔드.
+Lightweight **Hono (Bun)** backend + **React (Vite)** frontend. SQLite-based CRUD API with a SPA frontend — AI-driven, docs-first workflow.
 
 ## Stack
 
 | Layer | Choice | Why |
 |---|---|---|
 | Runtime | [Bun](https://bun.sh) | Fast start, built-in SQLite, fetch, test runner |
-| Backend | [Hono](https://hono.dev) | 24.9KB bundle, lightweight, multi-runtime support |
+| Backend | [Hono](https://hono.dev) | ~25 KB bundle, lightweight, multi-runtime |
 | Database | Bun:SQLite (built-in) | Zero extra deps, file-based, no server needed |
-| Frontend | React 19 + Vite 6 + Tailwind CSS 4 | Light SPA, hot reload, AI-friendly patterns |
-| Testing | Vitest v4 | Same runtime as Bun, API smoke tests built-in |
+| Frontend | React 19 + Vite 6 + Tailwind CSS 4 | Light SPA, hot reload, AI-friendly |
+| Testing | `bun test` | Native runner, zero config |
 
 ## Quick Start
 
@@ -19,9 +19,9 @@ Lightweight **Hono (Bun)** backend / **React (Vite)** frontend — originally mi
 ```bash
 cd backend
 bun install
-bun run dev        # localhost:3001 (or set PORT)
-bun run build      # → dist/index.js (25KB)
-bun run test       # Vitest API smoke tests
+bun run dev         # localhost:3000 (set PORT=xxx to change)
+bun run build       # → dist/index.js (~25 KB)
+bun run test        # Bun native test runner
 ```
 
 ### Frontend
@@ -29,28 +29,28 @@ bun run test       # Vitest API smoke tests
 ```bash
 cd frontend
 bun install
-bun run dev        # localhost:5173, proxies /api → :3001
-bun run build      # → dist/ (production)
+bun run dev         # localhost:5173, proxies /api → :3000
+bun run build       # → dist/ (production)
 ```
 
 ## API Endpoints
 
 | Method | Path | Description |
 |---|---|---|
-| `GET`  | `/`              | Service info (version, status) |
-| `GET`  | `/api/health`    | Health check |
-| `GET`  | `/api/tasks`     | List all tasks |
-| `GET`  | `/api/tasks/:id` | Get single task |
-| `POST` | `/api/tasks`     | Create task (201) |
-| `PUT`  | `/api/tasks/:id` | Update task |
-| `DELETE` | `/api/tasks/:id` | Delete task |
+| `GET`   | `/`               | Service info (version, status) |
+| `GET`   | `/api/health`     | Health check |
+| `GET`   | `/api/tasks`      | List all tasks |
+| `GET`   | `/api/tasks/:id`  | Get single task |
+| `POST`  | `/api/tasks`      | Create task (201) |
+| `PUT`   | `/api/tasks/:id`  | Update task |
+| `DELETE`| `/api/tasks/:id`  | Delete task |
 
 ### Example: Create a Task
 
 ```bash
-curl -X POST http://localhost:3001/api/tasks \
-  -H 'Content-Type: application/json' \
-  -d '{"title": "PRD Review", "customer_request": "Design meeting"}'
+curl -X POST http://localhost:3000/api/tasks \
+   -H 'Content-Type: application/json' \
+   -d '{"title": "PRD Review", "customer_request": "Design meeting"}'
 ```
 
 ## Project Structure
@@ -58,26 +58,26 @@ curl -X POST http://localhost:3001/api/tasks \
 ```
 ├── backend/
 │   ├── src/
-│   │   ├── db/client.ts          # Bun:SQLite (init + connection)
-│   │   ├── routes/tasks.ts       # CRUD endpoints
-│   │   ├── routes/health.ts      # Health check
-│   │   └── __tests__/            # Vitest API smoke tests
-│   ├── Dockerfile
-│   ├── docker-compose.yml        # (legacy — optional)
-│   └── vitest.config.ts
+│   │   ├── db/client.ts           # Bun:SQLite (init + connection)
+│   │   ├── routes/tasks.ts        # CRUD endpoints
+│   │   ├── routes/health.ts       # Health check
+│   │   └── __tests__/             # Bun test runner
+│   └── Dockerfile                 # (legacy — optional)
 ├── frontend/
 │   ├── src/
-│   │   ├── pages/                # HomePage, TasksPage
-│   │   ├── lib/api.ts            # API client
-│   │   └── App.tsx               # Router + layout
+│   │   ├── pages/                 # HomePage, TasksPage
+│   │   ├── lib/api.ts             # API client
+│   │   └── App.tsx                # Router + layout
 │   └── vite.config.ts
-└── progress.md                   # Migration roadmap (completed)
+├── docs/prd/                      # Drop PRDs here
+├── Makefile                      # `make verify`
+└── AGENTS.md                     # Agent workflow instructions
 ```
 
 ## Dependencies
 
-**Backend:** `hono` only — SQLite가 Bun에 내장되어 별도 설치 불필요.
+**Backend:** `hono` only — SQLite is built into Bun.
 
-**Frontend:** React 19, Vite, Tailwind CSS — 경량 SPA 구성.
+**Frontend:** React 19, Vite, Tailwind CSS — minimal SPA.
 
-Total backend bundle: **~25KB** (minified).
+Total backend bundle: **~25 KB** (minified).

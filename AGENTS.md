@@ -1,96 +1,99 @@
 # AGENTS.md — PRD-Driven Delivery (Lightweight Agent Scaffold)
 
-PRD 를 `docs/prd/` 에 두면 agent 가 backend / frontend / e2e-test 까지 구현하는 docs-first 워크플로우입니다.
+Drop a PRD into `docs/prd/` and this scaffold drives an agent through backend → frontend → e2e-test. Docs-first, AI-native workflow.
 
-## 스택
+## Stack
 
-| 레이어 | 선택 |
-|--------|------|
-| Backend | Hono + Bun (TypeScript) |
-| Frontend | React 19 + Vite + Tailwind CSS v4 |
-| DB | SQLite (`bun:sqlite`) — prepared statements 로 SQL injection 방어 |
-| E2E Test | Vitest API smoke test + browser mode (Chromium headless) |
+| Layer | Choice |
+|-------|--------|
+| Runtime | [Bun](https://bun.sh) — fast start, built-in SQLite, fetch, test runner |
+| Backend | [Hono](https://hono.dev) + TypeScript — ~25 KB bundle |
+| Frontend | React 19 + Vite 6 + Tailwind CSS v4 |
+| Database | Bun:SQLite (`bun:sqlite`) — prepared statements prevent SQL injection |
+| Testing | `bun test` — native runner, zero config, built-in describe/it/expect |
 | CI | GitHub Actions (push / PR on `main`) |
 
-## 스택 제약 (Violating this is an error)
+## Stack Constraints (Violating is an error)
 
-1. **ORM 사용 금지** — `bun:sqlite` prepared statements 를 직접 사용하거나, 정말 가볍게는 `better-sqlite3`. Drizzle 이나 Prisma 는太重합니다.
-2. **Next.js/LNPM 사용 금지** — 백엔드와 중복되는 라우팅 시스템은 배제됩니다.
-3. **Docker/Kubernetes 의존성 제거** — 로컬 개발 + CI 기반検証으로 충분합니다.
+1. **No ORM** — use `bun:sqlite` prepared statements directly. Drizzle, Prisma are too heavy.
+2. **No Next.js / Nuxt** — routing overlap with Hono; keep it light.
+3. **No Docker / Kubernetes** — local dev + CI is enough.
 
-## 디렉토리 구조
+## Directory Structure
 
 ```
-docs/           ← PRD / Spec 이 들어가는 곳
-backend/        ← Hono + Bun (src/, __tests__/, vite.config.ts)
-frontend/       ← React + Vite (src/, vite.config.ts)
+docs/            ← PRD / Specs go here
+backend/         ← Hono + Bun (src/, __tests__)
+frontend/        ← React + Vite (src/, vite.config.ts)
+Makefile         → `make verify` runs build + test pipeline
+AGENTS.md        → You are here
 ```
 
 ## Workflow: PRD → CODE
 
-1. **PRD 작성** — `docs/prd/<feature>.md` 에 기능 명세를 Markdown 으로 작성합니다.
-2. **구현 순서** — agent 가 아래 순서대로 구현합니다.
-   1. DB schema (SQLite table migration)
+1. **Write the PRD** — place `docs/prd/<feature>.md` with a clear spec in Markdown.
+2. **Implementation order** — the agent implements in this sequence:
+   1. DB schema (SQLite table migration via `db/client.ts`)
    2. Backend routes + tests (`backend/src/routes/`, `backend/src/__tests__/`)
    3. Frontend pages + API hooks (`frontend/src/pages/`, `frontend/src/lib/api.ts`)
    4. E2E smoke test (`backend/src/__tests__/e2e-*.ts`)
-3. **검증** — `make verify` 또는 아래 커맨드 수동 실행
+3. **Verify** — run `make verify` or the commands below manually.
 
-## Local LLM Loop 구성
+## Local LLM Loop Setup
 
-Agent 는 Ollama / MLX 모델을 loop 로 돌며 PRD 를 code 로 변환합니다. 각 단계는 **자기 검증(self-check)** 필수:
+Agents run Ollama / MLX models in a loop to convert PRDs into code. Each step requires a **self-check**:
 
 ```bash
-# 1. Backend 타입 체크 + 빌드 + 테스트
+# 1. Backend: type check + build + test
 cd backend && bun run build && bun run test
 
-# 2. Frontend 타입 체크 + 빌드
+# 2. Frontend: type check + build
 cd frontend && tsc --noEmit && vite build
 
-# 3. Integration (전체)
+# 3. Full integration
 make verify
 ```
 
-### Loop 전략 (중요 — Reasoning Loop 회피 필수)
+### Loop Strategy (Critical — Avoid Reasoning Loops)
 
-| Model | 설정 |
+| Model | Settings |
 |---|---|
 | Qwen3 | `temperature 0.6-0.7`, `repeat_penalty 1.15` |
 | Gemma4 | `temperature 1.0`, `top_k 40`, `--jinja` |
 
-**절대로** `repeat_penalty` + `frequency_penalty` 를 겹치게 하지 마세요.
+**Never** stack `repeat_penalty` + `frequency_penalty` — they cancel each other out.
 
-### PRD 기반 코드 생성 순서
+### PRD-Driven Code Generation Order
 
-Agent 가 PRD를 읽고 code 를 작성할 때:
+When the agent reads a PRD and writes code:
 
-1. **Schema first** — SQLite 테이블/컬럼을 먼저 설계하고 검증
-2. **API layer** — route 정의 → test 작성 → 즉시 `bun run test` 로 pass 확인
-3. **Frontend layer** — page 컴포넌트 → api.ts hook → 빌드 검증
-4. **모듈 분리 의무** — 1 feature = 1 routes file + 1 test file
+1. **Schema first** — design SQLite tables/columns, verify in isolation.
+2. **API layer** — define route → write test → run `bun run test` to confirm passing.
+3. **Frontend layer** — page component → api.ts hook → build verification.
+4. **Module isolation** — 1 feature = 1 routes file + 1 test file. No monoliths.
 
-### 코드 스타일
+### Code Style
 
-- TypeScript strict mode
-- Tailwind CSS (utility-first)
-- KISS/DRY: 테스트는 최소한으로, 핵심 흐름만 assert
-- 불필요한 boilerplate 제거
+- TypeScript strict mode. No `any`, no `// @ts-ignore`.
+- Tailwind CSS (utility-first). No custom CSS files unless necessary.
+- KISS/DRY: minimal tests, assert only the critical path.
+- Remove boilerplate aggressively. If it's not needed, it doesn't exist.
 
 ## Common Commands
 
 ```bash
 # Backend
-cd backend && bun run build      # Bundled ~25KB
-cd backend && bun run test        # Vitest smoke tests
+cd backend && bun run build       # Bundles ~25 KB
+cd backend && bun run test        # Native Bun test runner
 
 # Frontend
-cd frontend && tsc --noEmit      # Type check only
-cd frontend && vite build        # Production build
+cd frontend && tsc --noEmit       # Type check only
+cd frontend && vite build         # Production build
 
 # All at once
-make verify                      # Backend + Frontend 빌드 + 테스트 (Makefile 에 정의)
+make verify                       # Backend + Frontend build + test (defined in Makefile)
 ```
 
 ## Goal
 
-PRD -> CODE -> TEST 흐름이 agent 가 자율적으로 완주하도록 유지하세요. 불필요한 도구 없이 가장 가벼운 스택으로 전달합니다.
+Keep the PRD → CODE → TEST pipeline running autonomously. Deliver with the lightest possible stack — no unnecessary tooling, no heavy dependencies, no boilerplate.

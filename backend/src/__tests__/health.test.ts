@@ -1,5 +1,4 @@
-// Health endpoint unit test
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from 'bun:test';
 import { healthRoutes } from '../routes/health.js';
 import { Hono } from 'hono';
 
@@ -13,5 +12,5 @@ describe('Health Endpoint', () => {
     const body: any = await res.json();
     expect(body.status).toBe('ok');
     expect(body.service).toBe('prd-delivery-backend');
-  });
+   });
 });

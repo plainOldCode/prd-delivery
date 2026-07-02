@@ -7,15 +7,14 @@
     "dev": "bun run --watch src/index.ts",
     "build": "bun build src/index.ts --target bun --outdir ./dist --minify",
     "start": "bun run dist/index.js",
-    "test": "bun x vitest run",
-    "test:api": "bun x vitest run src/__tests__/api.test.ts"
+    "test": "bun test src/__tests__/",
+    "test:api": "PORT=3001 bun test src/__tests__/api.test.ts"
   },
   "dependencies": {
     "hono": "^4.6.0"
   },
   "devDependencies": {
     "@types/bun": "^1.1.0",
-    "typescript": "^5.6.0",
-    "vitest": "^4.1.9"
+    "typescript": "^5.6.0"
   }
 }
