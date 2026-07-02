@@ -1,0 +1,43 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        node-version: ['lts/*']
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Backend install & build
+        run: |
+          cd backend
+          bun install --frozen-lockfile
+          bun run build
+
+      - name: Frontend install & build
+        run: |
+          cd frontend
+          bun install --frozen-lockfile
+          bun run build
+
+      - name: Backend tests
+        run: |
+          cd backend
+          PORT=3001 bun run src/index.ts &
+          sleep 2
+          bun x vitest run
+          kill %1
