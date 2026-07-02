@@ -9,7 +9,6 @@ on:
 jobs:
   build-and-test:
     runs-on: ubuntu-latest
-
     steps:
       - uses: actions/checkout@v4
 
@@ -21,7 +20,7 @@ jobs:
       - name: Backend install + test
         run: |
           cd backend
-          bun install --frozen-lockfile
+          bun install
           bun run build
           export DATABASE_URL="file::memory:"
           bun run test
@@ -29,5 +28,5 @@ jobs:
       - name: Frontend install + build
         run: |
           cd frontend
-          bun install --frozen-lockfile
+          bun install
           bun run build
