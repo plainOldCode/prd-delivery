@@ -1,35 +1,28 @@
-export PATH="/Users/miniadmin/.bun/bin:${PATH}"
+#!/bin/bash
+set -euo pipefail
 
-cd "$(dirname "$0")/../backend"
+echo "=== PRD Delivery: Verify ==="
 
-echo "==> Backend build"
-bun run build || exit 1
-
-echo "==> Health unit test (no server needed)"
-bun test src/__tests__/health.test.ts || exit 1
-
-SERVER_PORT=3999
-
-echo "[test] killing old servers on :$SERVER_PORT ..."
-kill $(lsof -ti:$SERVER_PORT 2>/dev/null) 2>/dev/null || true
-sleep 0.5
-
-echo "==> Starting backend on port $SERVER_PORT"
-PORT=$SERVER_PORT bun run src/index.ts &
-SERVER_PID=$!
-sleep 1.5
-
-echo "==> API integration test (server :$SERVER_PORT)"
-PORT=$SERVER_PORT bun test src/__tests__/api.test.ts; result=$?
-kill $SERVER_PID 2>/dev/null || true
-
-cd "$(dirname "$0")/../frontend"
-
-echo "==> Frontend type check"
-bun x tsc --noEmit || exit 1
-
-echo "==> Frontend build"
-bun x vite build || exit 1
+# Find bun in PATH instead of hardcoded path
+BUN=$(command -v bun) || { echo "Bun not found in PATH"; exit 1; }
+echo "Using Bun: $BUN"
 
 echo ""
-echo "All checks passed OK"
+echo "--- Backend ---"
+cd backend
+$BUN install --frozen-lockfile
+DATABASE_URL="file::memory:" $BUN run build
+export DATABASE_URL="file::memory:"
+$BUN run test || { echo "Backend tests failed"; exit 1; }
+echo "Backend: OK"
+
+echo ""
+echo "--- Frontend ---"
+cd ../frontend
+$BUN install --frozen-lockfile
+tsc --noEmit || { echo "Frontend type check failed"; exit 1; }
+vite build || { echo "Frontend build failed"; exit 1; }
+echo "Frontend: OK"
+
+echo ""
+echo "=== All checks passed ==="

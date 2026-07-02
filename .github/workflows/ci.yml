@@ -10,10 +10,6 @@ jobs:
   build-and-test:
     runs-on: ubuntu-latest
 
-    strategy:
-      matrix:
-        node-version: ['lts/*']
-
     steps:
       - uses: actions/checkout@v4
 
@@ -22,22 +18,16 @@ jobs:
         with:
           bun-version: latest
 
-      - name: Backend install & build
+      - name: Backend install + test
         run: |
           cd backend
           bun install --frozen-lockfile
           bun run build
+          export DATABASE_URL="file::memory:"
+          bun run test
 
-      - name: Frontend install & build
+      - name: Frontend install + build
         run: |
           cd frontend
           bun install --frozen-lockfile
           bun run build
-
-      - name: Backend tests
-        run: |
-          cd backend
-          PORT=3001 bun run src/index.ts &
-          sleep 2
-          bun x vitest run
-          kill %1
