@@ -22,55 +22,59 @@ Drop a PRD into `docs/prd/` and this scaffold drives an agent through backend �
 ## Directory Structure
 
 ```
-docs/            ← PRD / Specs go here
-backend/         ← Hono + Bun (src/, __tests__)
-frontend/        ← React + Vite (src/, vite.config.ts)
-Makefile         → `make verify` runs build + test pipeline
-AGENTS.md        → You are here
+docs/prd/         ← PRD / Specs (see PRD Format below)
+backend/          ← Hono + Bun (src/, src/__tests__)
+frontend/         ← React + Vite (src/, vite.config.ts)
+Makefile          → `make verify` runs build + test pipeline
+AGENTS.md         → You are here
 ```
 
 ## Workflow: PRD → CODE
 
-1. **Write the PRD** — place `docs/prd/<feature>.md` with a clear spec in Markdown.
+1. **Write the PRD** — place `docs/prd/<feature>.md` following [TEMPLATE.md](docs/prd/TEMPLATE.md). See [example.md](docs/prd/example.md) for a real implementation.
 2. **Implementation order** — the agent implements in this sequence:
-   1. DB schema (SQLite table migration via `db/client.ts`)
-   2. Backend routes + tests (`backend/src/routes/`, `backend/src/__tests__/`)
-   3. Frontend pages + API hooks (`frontend/src/pages/`, `frontend/src/lib/api.ts`)
-   4. E2E smoke test (`backend/src/__tests__/e2e-*.ts`)
-3. **Verify** — run `make verify` or the commands below manually.
+    1. DB schema (SQLite table migration via `backend/src/db/client.ts`)
+    2. Backend routes + tests (`backend/src/routes/`, `backend/src/__tests__/`)
+    3. Frontend pages + API hooks (`frontend/src/pages/`, `frontend/src/lib/api.ts`)
+    4. Verify — `make verify` must pass before marking the feature done
+3. **Mark status** — update `status: "implemented"` in the PRD YAML frontmatter when done.
 
-## Local LLM Loop Setup
+### Reading a PRD (Agent Behavior)
 
-Agents run Ollama / MLX models in a loop to convert PRDs into code. Each step requires a **self-check**:
+When you receive a PRD file or are told to implement a feature:
 
-```bash
-# 1. Backend: type check + build + test
-cd backend && bun run build && bun run test
+1. **Load the PRD** — read `docs/prd/<feature>.md` end-to-end
+2. **Parse sections in order**:
+    - `Database Schema` → update `backend/src/db/client.ts` with new tables
+    - `API Endpoints` → create/update route files under `backend/src/routes/`
+    - `Frontend Pages` → create page components, hooks, routes
+    - `Test Requirements` → write matching test file(s)
+3. **Implement one section at a time** — do not skip ahead to UI before the API is working
 
-# 2. Frontend: type check + build
-cd frontend && tsc --noEmit && vite build
+### Writing Tests (Rules)
 
-# 3. Full integration
-make verify
-```
+Every new feature needs tests that prove it works:
 
-### Loop Strategy (Critical — Avoid Reasoning Loops)
+- **One test file per route** → `backend/src/__tests__/<feature>.test.ts`
+- **Use in-memory SQLite**: `export const DATABASE_URL = "file::memory:";` before importing the app
+- **Assert critical path only**: status code + response shape. Don't test edge cases unless the PRD specifies them
+- **Run tests after each step** — if `bun run test` fails, fix before moving on
 
-| Model | Settings |
-|---|---|
-| Qwen3 | `temperature 0.6-0.7`, `repeat_penalty 1.15` |
-| Gemma4 | `temperature 1.0`, `top_k 40`, `--jinja` |
+### PRD Format — Required Sections
 
-**Never** stack `repeat_penalty` + `frequency_penalty` — they cancel each other out.
+When creating a new feature spec, use [docs/prd/TEMPLATE.md](docs/prd/TEMPLATE.md) as your base. These sections are mandatory:
 
-### PRD-Driven Code Generation Order
+| Section | Purpose |
+|---------|---------|
+| `Overview` | What + Why — one paragraph context for the agent |
+| `User Stories` | Behavior the user expects — drives acceptance criteria |
+| `Database Schema` | SQL DDL → agent creates tables in `client.ts` |
+| `API Endpoints` | HTTP method, path, body, response → agent writes routes + tests |
+| `Frontend Pages` | UI structure → agent creates React components |
+| `Acceptance Criteria` | Checkboxes the agent marks `[x]` when done |
+| `Test Requirements` | What to test, how isolated tests should run |
 
-When the agent reads a PRD and writes code:
-
-1. **Schema first** — design SQLite tables/columns, verify in isolation.
-2. **API layer** — define route → write test → run `bun run test` to confirm passing.
-3. **Frontend layer** — page component → api.ts hook → build verification.
-4. **Module isolation** — 1 feature = 1 routes file + 1 test file. No monoliths.
+An LLM can parse any `.md` file following this template and produce working code without asking questions.
 
 ### Code Style
 
@@ -83,15 +87,15 @@ When the agent reads a PRD and writes code:
 
 ```bash
 # Backend
-cd backend && bun run build       # Bundles ~25 KB
-cd backend && bun run test        # Native Bun test runner
+cd backend && bun run build        # Bundles ~25 KB
+cd backend && bun run test         # Native Bun test runner (in-memory SQLite)
 
 # Frontend
-cd frontend && tsc --noEmit       # Type check only
-cd frontend && vite build         # Production build
+cd frontend && tsc --noEmit        # Type check only
+cd frontend && vite build          # Production build
 
 # All at once
-make verify                       # Backend + Frontend build + test (defined in Makefile)
+make verify                        # Backend + Frontend build + test
 ```
 
 ## Goal
