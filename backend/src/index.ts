@@ -18,8 +18,10 @@ app.get('/', (c) => c.json({ service: 'prd-delivery-backend', version: '0.1.0', 
 /* ------------------------------------------------------------------ */
 import * as healthRoutes from './routes/health';
 import { taskRoutes } from './routes/tasks';
+import { authRoutes } from './routes/auth';
 app.route('/api', healthRoutes.healthRoutes);
 app.route('/api', taskRoutes);
+app.route('/api', authRoutes);
 
 export { app };
 

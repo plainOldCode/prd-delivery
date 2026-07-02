@@ -21,7 +21,14 @@ export async function initDb() {
     target_delivery_date TEXT,
     build_estimate    TEXT,
     owner_name      TEXT
-    )`;
+     )`;
+
+  await db`CREATE TABLE IF NOT EXISTS users (
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    username       TEXT UNIQUE NOT NULL COLLATE NOCASE,
+    password_hash  TEXT NOT NULL,
+    created_at     TEXT NOT NULL DEFAULT (datetime('now'))
+  )`;
 }
 
 // Auto-init on import so tests don't need to call initDb() manually
