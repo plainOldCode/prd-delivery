@@ -1,0 +1,21 @@
+{
+  "name": "prd-delivery-backend",
+  "module": "esnext",
+  "type": "module",
+  "version": "0.1.0",
+  "scripts": {
+    "dev": "bun run --watch src/index.ts",
+    "build": "bun build src/index.ts --target bun --outdir ./dist --minify",
+    "start": "bun run dist/index.js",
+    "test": "bun x vitest run",
+    "test:api": "bun x vitest run src/__tests__/api.test.ts"
+  },
+  "dependencies": {
+    "hono": "^4.6.0"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.1.0",
+    "typescript": "^5.6.0",
+    "vitest": "^4.1.9"
+  }
+}
