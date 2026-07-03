@@ -21,14 +21,38 @@ export async function initDb() {
     target_delivery_date TEXT,
     build_estimate    TEXT,
     owner_name      TEXT
-     )`;
+       )`;
 
   await db`CREATE TABLE IF NOT EXISTS users (
     id             INTEGER PRIMARY KEY AUTOINCREMENT,
     username       TEXT UNIQUE NOT NULL COLLATE NOCASE,
     password_hash  TEXT NOT NULL,
     created_at     TEXT NOT NULL DEFAULT (datetime('now'))
-  )`;
+   )`;
+
+  // Benchmark tables — LLM Bench Dashboard
+  await db`CREATE TABLE IF NOT EXISTS bench_runs (
+    id               INTEGER PRIMARY KEY AUTOINCREMENT,
+    model_name       TEXT NOT NULL,
+    hardware         TEXT,
+    runtime          TEXT,
+    speed_prompt_tps REAL NOT NULL DEFAULT 0,
+    speed_gen_tps    REAL NOT NULL DEFAULT 0,
+    speed_ttft_ms    REAL NOT NULL DEFAULT 0,
+    retention_pct    REAL NOT NULL DEFAULT 0,
+    accuracy_pct     REAL NOT NULL DEFAULT 0,
+    created_at       TEXT NOT NULL DEFAULT (datetime('now'))
+   )`;
+
+  await db`CREATE TABLE IF NOT EXISTS bench_tests (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    run_id      INTEGER NOT NULL REFERENCES bench_runs(id),
+    category    TEXT NOT NULL,
+    name        TEXT NOT NULL,
+    passed      INTEGER NOT NULL DEFAULT 0,
+    details     TEXT,
+    created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+   )`;
 }
 
 // Auto-init on import so tests don't need to call initDb() manually

@@ -5,6 +5,8 @@ import { AuthProvider, useAuth } from './auth/AuthContext';
 import HomePage from './pages/HomePage';
 import TasksPage from './pages/TasksPage';
 import { AuthPage } from './pages/AuthPage';
+import BenchPage from './pages/BenchPage';
+import BenchHistoryPage, { BenchDetailPage } from './pages/BenchHistoryPage';
 
 /* ---------- ProtectedRoute ---------- */
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -43,9 +45,10 @@ function Layout({ children }: { children: React.ReactNode }) {
     <div className="min-h-screen bg-slate-50">
       <header className="bg-white shadow-sm px-6 py-3 flex items-center justify-between">
         <nav className="space-x-4">
-          <a href="/" className="text-slate-700 hover:text-blue-600">Home</a>
-          <a href="/tasks" className="text-slate-700 hover:text-blue-600">Tasks</a>
-        </nav>
+           <a href="/" className="text-slate-700 hover:text-blue-600">Home</a>
+           <a href="/tasks" className="text-slate-700 hover:text-blue-600">Tasks</a>
+           <a href="/bench" className="text-slate-700 hover:text-blue-600">Benchmark</a>
+         </nav>
         <ProfileMenu />
       </header>
       <main className="p-6">{children}</main>
@@ -62,6 +65,9 @@ export default function App() {
           <Route path="/auth" element={<AuthPage />} />
           <Route path="/" element={<ProtectedRoute><Layout><HomePage /></Layout></ProtectedRoute>} />
           <Route path="/tasks" element={<ProtectedRoute><Layout><TasksPage /></Layout></ProtectedRoute>} />
+          <Route path="/bench" element={<BenchPage />} />
+          <Route path="/bench/history" element={<BenchHistoryPage />} />
+          <Route path="/bench/:runId" element={<BenchDetailPage runId={Number((window as any).__benchRunId__ ?? location.pathname.split('/').pop())} /> } />
         </Routes>
       </BrowserRouter>
     </AuthProvider>

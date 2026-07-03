@@ -1,7 +1,7 @@
 #!/bin/bash
 # test-runner.sh — Run E2E tests locally or in CI with consistent setup.
 # Usage: ./scripts/test-runner.sh [--ci]
-#   --ci    Skip browser install (assume already cached), use line reporter
+#    --ci    Skip browser install (assume already cached), use line reporter
 set -euo pipefail
 
 PROJECT_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -25,8 +25,15 @@ if [ -z "$CI_MODE" ]; then
     cd "$PROJECT_ROOT/frontend" && npx playwright install chromium
 fi
 
+# Clear persistent SQLite DB so E2E tests start fresh (local only)
+if [ -z "$CI_MODE" ]; then
+    echo ""
+    echo "--- Clearing test database ---"
+    rm -f "$PROJECT_ROOT/backend/data.db"
+fi
+
 echo ""
-echo "--- Running E2E tests ---"
+echo "--- Running E2E tests (Playwright webServer handles backend+frontend) ---"
 cd "$PROJECT_ROOT/frontend"
 export CI="$CI_MODE"
 npx playwright test --config=e2e/playwright.config.ts
