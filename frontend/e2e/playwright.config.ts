@@ -17,14 +17,14 @@ export default defineConfig({
     {
       command: 'npx vite',
       port: 5173,
-      reuseExistingServer: !process.env.CI,
+      reuseExistingServer: true,
       timeout: 60_000,
-    },
-    // Backend server (Hono + Bun) on port 3001
-    {
+     },
+     // Backend server (Hono + Bun) on port 3001
+     {
       command: 'cd ../backend && bun run src/index.ts',
       port: 3001,
-      reuseExistingServer: !process.env.CI,
+      reuseExistingServer: true,
       timeout: 30_000,
     },
   ],
