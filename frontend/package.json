@@ -6,7 +6,8 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
-    "test:e2e": "\"node_modules/.bin/playwright\" test --config=e2e/playwright.config.ts"
+    "test:e2e": "\"node_modules/.bin/playwright\" test --config=e2e/playwright.config.ts",
+    "e2e": "\"node_modules/.bin/playwright\" test --config=e2e/playwright.config.ts"
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.3.2",
