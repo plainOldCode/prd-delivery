@@ -30,3 +30,18 @@ jobs:
           cd frontend
           bun install
           bun run build
+
+      - name: Install Playwright browsers
+        run: |
+          cd frontend
+          bunx playwright install --with-deps chromium
+
+      - name: E2E tests
+        run: |
+          cd backend
+          DATABASE_URL="file::memory:" bun run dev &
+          sleep 2
+          cd ../frontend
+          bun run dev &
+          sleep 3
+          bun run e2e
