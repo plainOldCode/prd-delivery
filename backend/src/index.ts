@@ -32,7 +32,7 @@ async function start() {
   const { initDb } = await import('./db/client');
   await initDb();
 
-  const port = parseInt(process.env.PORT ?? '3000', 10);
+  const port = parseInt(process.env.PORT ?? '3001', 10);
   serve({ fetch: (request) => app.fetch(request), port });
   console.log(`[Hono] Listening on http://localhost:${port}`);
 }
