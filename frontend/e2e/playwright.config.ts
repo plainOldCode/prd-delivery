@@ -1,4 +1,9 @@
 import { defineConfig } from '@playwright/test';
+import { dirname, resolve } from 'path';
+import { fileURLToPath } from 'url';
+
+const __dirname  = dirname(fileURLToPath(import.meta.url));
+const projectRoot = resolve(__dirname, '../..');
 
 export default defineConfig({
   testDir: '.',
@@ -13,19 +18,19 @@ export default defineConfig({
     screenshot: 'only-on-failure',
    },
   webServer: [
-    // Frontend dev server (Vite) on port 5173
-    {
+     // Backend — Hono + Bun (in-memory SQLite)
+     {
+      command: `cd ${projectRoot}/backend && DATABASE_URL="file::memory:" bun run src/index.ts`,
+      port: 3001,
+      reuseExistingServer: true,
+      timeout: 30_000,
+     },
+     // Frontend — Vite dev server
+     {
       command: 'npx vite',
       port: 5173,
       reuseExistingServer: true,
       timeout: 60_000,
      },
-     // Backend server (Hono + Bun) on port 3001
-     {
-      command: 'cd ../backend && bun run src/index.ts',
-      port: 3001,
-      reuseExistingServer: true,
-      timeout: 30_000,
-    },
-  ],
+   ],
 });
