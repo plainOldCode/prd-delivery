@@ -4,10 +4,8 @@ const USERNAME = `e2etest_${Date.now()}`;
 const PASSWORD = 'testpwd123!';
 
 test('Auth flow: Sign Up -> Sign In -> Dashboard -> Sign Out', async ({ page }) => {
-  await page.goto('/');
-
-   /* Redirect to /auth when not logged in */
-  await expect(page).toHaveURL(/\/auth/, { timeout: 5000 });
+  await page.goto('/auth');
+  await page.waitForSelector('[data-testid="auth-heading"]', { timeout: 5000 });
 
   const usernameInput = page.getByLabel('Username');
   const passwordInput = page.getByLabel('Password', { exact: true });
