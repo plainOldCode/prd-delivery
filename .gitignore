@@ -28,3 +28,8 @@ Thumbs.db
 # Environment
 .env
 .env.*
+
+# Playwright test artifacts
+frontend/test-results/
+frontend/playwright-report/
+
