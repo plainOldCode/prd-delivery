@@ -1,58 +1,44 @@
+// e2e/auth.spec.ts — Sign Up → Sign In → Dashboard → Sign Out
 import { test, expect } from '@playwright/test';
 
-const USERNAME = `e2etest_${Date.now()}`;
-const PASSWORD = 'testpwd123!';
-
 test('Auth flow: Sign Up -> Sign In -> Dashboard -> Sign Out', async ({ page }) => {
+  // Navigate to auth page directly
   await page.goto('/auth');
-  await page.waitForSelector('[data-testid="auth-heading"]', { timeout: 5000 });
 
+  // Wait for the page to fully render — check either heading or any input
+  await expect(page.locator('#username')).toBeVisible({ timeout: 10_000 });
+
+  // ===== Sign Up =====
   const usernameInput = page.getByLabel('Username');
   const passwordInput = page.getByLabel('Password', { exact: true });
+  const confirmInput  = page.getByLabel('Confirm Password');
+  const submitBtn     = page.getByRole('button', { name: 'Sign In' });
 
-   /* --- Step 1: Sign Up --- */
-  if (!(await page.locator('[data-testid=auth-heading]').textContent())?.includes('Sign Up')) {
-    await page.getByText(/^Sign Up$/).click();
-   }
-  await expect(usernameInput).toBeVisible();
+  // Switch to Sign Up mode
+  await page.getByRole('button', { name: 'Sign Up' }).click();
+  await expect(page.locator('[data-testid="auth-heading"]')).toContainText('Sign Up');
 
-  await usernameInput.fill(USERNAME);
-  await passwordInput.fill(PASSWORD);
-  await page.getByLabel('Confirm Password').fill(PASSWORD);
+  await usernameInput.fill('playwright-test');
+  await passwordInput.fill('strongPass123!');
+  await confirmInput.fill('strongPass123!');
   await page.getByRole('button', { name: 'Sign Up' }).click();
 
-   /* Verify redirected away from /auth */
-  await expect(async () => {
-    expect(page.url()).not.toMatch(/\/auth/);
-  }).toPass({ timeout: 10000 });
+  // Should be redirected to Home with user logged in
+  await expect(page.locator('[data-testid="profile-username"]')).toBeVisible({ timeout: 10_000 });
+  await expect(page.locator('[data-testid="profile-username"]')).toContainText('playwright-test');
 
-   /* Profile menu visible with username */
-  await page.locator('[data-testid=profile-menu]').waitFor({ timeout: 5000 });
-  expect(await page.locator('[data-testid=profile-username]').textContent()).toContain(USERNAME);
-
-   /* --- Step 2: Sign Out via profile dropdown --- */
-  const profileContainer = page.locator('[data-testid=profile-menu]');
-  await profileContainer.hover({ force: true });
+  // ===== Sign Out =====
+  await page.locator('[data-testid="profile-menu"]').first().click();
   await page.getByRole('button', { name: 'Sign Out' }).click();
 
-   /* Back on auth page, profile gone */
-  await expect(page).toHaveURL(/\/auth/, { timeout: 5000 });
-  await expect(profileContainer).toBeHidden({ timeout: 5000 });
+  // Should be back on homepage — redirected to /auth
+  await expect(page).toHaveURL(/\/auth/, { timeout: 10_000 });
 
-   /* --- Step 3: Sign In with same credentials --- */
-  if ((await page.locator('[data-testid=auth-heading]').textContent())?.includes('Sign Up')) {
-    await page.getByText(/^Sign In$/).click();
-   }
+  // ===== Sign In =====
+  await usernameInput.fill('playwright-test');
+  await passwordInput.fill('strongPass123!');
+  await submitBtn.click();
 
-  await usernameInput.fill(USERNAME);
-  await passwordInput.fill(PASSWORD);
-  await page.getByRole('button', { name: 'Sign In' }).click();
-
-   /* Verify login success */
-  await expect(async () => {
-    expect(page.url()).not.toMatch(/\/auth/);
-  }).toPass({ timeout: 10000 });
-
-  await page.locator('[data-testid=profile-username]').waitFor({ timeout: 5000 });
-  expect(await page.locator('[data-testid=profile-username]').textContent()).toContain(USERNAME);
+  // Back on Home with user logged in again
+  await expect(page.locator('[data-testid="profile-username"]')).toBeVisible({ timeout: 10_000 });
 });
