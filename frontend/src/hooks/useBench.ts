@@ -1,5 +1,6 @@
 // src/hooks/useBench.ts — Benchmark API용 커스텀 훅 모음
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
+
 import { get, post } from '../util/request.util';
 
 /* ---------- Types ---------- */
@@ -67,17 +68,30 @@ function useFetch<T>(fetcher: () => Promise<T>) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+   // 초기 API 호출 (1회 실행)
+  useEffect(() => {
+    let cancelled = false;
+    fetcher()
+      .then((res) => { if (!cancelled) setData(res as T); })
+      .catch((err: any) => { if (!cancelled) setError(err.message ?? 'Fetch failed'); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, []);
+
   const refetch = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      setData(await fetcher());
-    } catch (err: any) {
+      const result = await fetcher();
+      console.log('[useFetch] success:', result);
+      setData(result as T);
+     } catch (err: any) {
+      console.error('[useFetch] error:', err);
       setError(err.message ?? 'Fetch failed');
-    } finally {
+     } finally {
       setLoading(false);
-    }
-  }, [fetcher]);
+     }
+   }, [fetcher]);
 
   return { data, loading, error, refetch };
 }
@@ -105,119 +119,73 @@ export function useBenchDetail(runId: number) {
   return useFetch<BenchDetail>(() => get(`/bench/${runId}`));
 }
 
-/* ---------- useRunBenchmark() — mutating hook ---------- */
-
-function buildPartialSpeed(res: BenchSpeed, model: string): BenchRunResult {
-  return {
-    runId: Date.now(),
-    model,
-    hardware: '',
-    speed: res,
-    retention: { score: 0 } as BenchScore,
-    accuracy: { score: 0 } as BenchScore,
-    saved: false,
-  };
-}
-
-function buildPartialRetention(res: BenchScore, model: string): BenchRunResult {
-  return {
-    runId: Date.now(),
-    model,
-    hardware: '',
-    speed: { promptTps: 0, genTps: 0, ttftMs: 0 } as BenchSpeed,
-    retention: res,
-    accuracy: { score: 0 } as BenchScore,
-    saved: false,
-  };
-}
-
-function buildPartialAccuracy(res: BenchScore, model: string): BenchRunResult {
-  return {
-    runId: Date.now(),
-    model,
-    hardware: '',
-    speed: { promptTps: 0, genTps: 0, ttftMs: 0 } as BenchSpeed,
-    retention: { score: 0 } as BenchScore,
-    accuracy: res,
-    saved: false,
-  };
-}
-
+/* ---------- useRunBenchmark() — mutating hook with SSE support ---------- */
 export function useRunBenchmark() {
   const [result, setResult] = useState<BenchRunResult | null>(null);
   const [running, setRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [progress, setProgress] = useState('');
+  const [progress, setProgress] = useState({ message: '', percent: 0 });
 
-  const run = useCallback((model: string) => {
+  const run = useCallback(async (model: string) => {
     setRunning(true);
     setError(null);
     setResult(null);
-    setProgress('Benchmark 시작…');
+    setProgress({ message: 'Benchmark 준비 중...', percent: 0 });
 
-    post<BenchRunResult>('/bench/run', { model })
-      .then((res) => {
-        setResult(res);
-        setProgress('완료');
-        setRunning(false);
-      })
-      .catch((err: any) => {
-        setError(err.message ?? 'Benchmark 실행 실패');
-        setProgress('');
-        setRunning(false);
+    try {
+      // In-house fetch to handle SSE stream since our request.util doesn't support streams yet
+      const token = localStorage.getItem('auth_token');
+      const response = await fetch('/api/bench/run', {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          ...(token ? { authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ model }),
       });
+
+      if (!response.ok) throw new Error(`Svr Err: ${response.status}`);
+      if (!response.body) throw new Error('No response body');
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\\n\\n');
+        buffer = lines.pop() || '';
+
+        for (const line of lines) {
+          const [eventLine, ...dataLines] = line.split('\\n');
+          const event = eventLine.replace('event: ', '').trim();
+          const dataStr = dataLines.join('\\n').replace('data: ', '').trim();
+          
+          if (!dataStr) continue;
+          try {
+            const payload = JSON.parse(dataStr);
+            if (event === 'progress') {
+              setProgress({ message: payload.message, percent: payload.percent });
+            } else if (event === 'result') {
+              setResult(payload);
+            } else if (event === 'error') {
+              throw new Error(payload.message);
+            }
+          } catch (e: any) {
+            console.error('SSE parse error', e, dataStr);
+          }
+        }
+      }
+    } catch (err: any) {
+      setError(err.message ?? 'Benchmark 실행 실패');
+      setProgress({ message: '오류 발생', percent: 0 });
+    } finally {
+      setRunning(false);
+    }
   }, []);
 
-  const runSpeed = useCallback((model: string) => {
-    setRunning(true);
-    setError(null);
-    setProgress('Speed test…');
-    post<BenchSpeed>('/bench/speed', { model })
-      .then((res) => {
-        setResult(buildPartialSpeed(res, model));
-        setRunning(false);
-        setProgress('완료');
-      })
-      .catch((err: any) => {
-        setError(err.message ?? '실패');
-        setRunning(false);
-        setProgress('');
-      });
-  }, []);
-
-  const runRetention = useCallback((model: string) => {
-    setRunning(true);
-    setError(null);
-    setProgress('Retention test…');
-    post<BenchScore>('/bench/retention', { model })
-      .then((res) => {
-        setResult(buildPartialRetention(res, model));
-        setRunning(false);
-        setProgress('완료');
-      })
-      .catch((err: any) => {
-        setError(err.message ?? '실패');
-        setRunning(false);
-        setProgress('');
-      });
-  }, []);
-
-  const runAccuracy = useCallback((model: string) => {
-    setRunning(true);
-    setError(null);
-    setProgress('Accuracy test…');
-    post<BenchScore>('/bench/accuracy', { model })
-      .then((res) => {
-        setResult(buildPartialAccuracy(res, model));
-        setRunning(false);
-        setProgress('완료');
-      })
-      .catch((err: any) => {
-        setError(err.message ?? '실패');
-        setRunning(false);
-        setProgress('');
-      });
-  }, []);
-
-  return { result, running, error, progress, run, runSpeed, runRetention, runAccuracy };
+  return { result, running, error, progress, run };
 }

@@ -1,24 +1,7 @@
-// src/pages/BenchPage.tsx — Benchmark 대시보드 (다크 테마)
+// src/pages/BenchPage.tsx — Benchmark Dashboard (Dark Theme)
 import { useState } from 'react';
 import { useModels, useHardware, useRunBenchmark } from '../hooks/useBench';
-
-/* ---------- Model Badge ---------- */
-function ModelBadge({ name }: { name: string }) {
-  const [selected, setSelected] = useState(false);
-  return (
-    <button
-      type="button"
-      className={`px-3 py-1.5 rounded-lg text-sm font-mono transition-colors ${
-        selected
-          ? 'bg-red-600 text-white'
-          : 'bg-neutral-800 text-gray-300 hover:bg-neutral-700'
-      }`}
-      onClick={() => setSelected(true)}
-    >
-      {name}
-    </button>
-  );
-}
+import { useNavigate } from 'react-router-dom';
 
 /* ---------- Stat Card ---------- */
 function StatCard({ label, value, unit }: { label: string; value: string | number; unit?: string }) {
@@ -34,8 +17,8 @@ function StatCard({ label, value, unit }: { label: string; value: string | numbe
 }
 
 /* ---------- Progress Bar ---------- */
-function ProgressBar({ progress, running }: { progress: string; running: boolean }) {
-  if (!running && !progress) return null;
+function ProgressBar({ progress, running }: { progress: { message: string; percent: number }; running: boolean }) {
+  if (!running && !progress.message) return null;
   return (
     <div className="mt-4">
       <div className="flex items-center gap-2 mb-2">
@@ -46,26 +29,35 @@ function ProgressBar({ progress, running }: { progress: string; running: boolean
           </svg>
         )}
         <span className={`text-sm font-mono ${running ? 'text-red-400' : 'text-green-400'}`}>
-          {progress || ''}
+          {progress.message || ''}
         </span>
       </div>
-      {running && (
-        <div className="h-1 bg-neutral-800 rounded-full overflow-hidden">
-          <div className="h-full bg-red-500 animate-pulse w-2/5"/>
-        </div>
-      )}
+      <div className="h-1 bg-neutral-800 rounded-full overflow-hidden">
+        <div 
+          className="h-full bg-red-500 transition-all duration-500"
+          style={{ width: `${progress.percent}%` }}
+        />
+      </div>
     </div>
   );
 }
 
 /* ---------- Results Panel ---------- */
-function ResultsPanel({ result }: { result: any }) {
+function ResultsPanel({ result, onDetail }: { result: any; onDetail: (id: number) => void }) {
   if (!result) return null;
   const { model, speed, retention, accuracy } = result;
 
   return (
     <div className="mt-6 bg-neutral-900 rounded-xl border border-neutral-800 p-6">
-      <h3 className="text-lg font-bold text-white mb-1">{model}</h3>
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="text-lg font-bold text-white">{model}</h3>
+        <button 
+          onClick={() => onDetail(result.runId)}
+          className="px-3 py-1 bg-neutral-800 hover:bg-neutral-700 text-gray-300 rounded-md text-xs font-medium transition"
+        >
+          View Full Report →
+        </button>
+      </div>
       {result.hardware && <p className="text-xs text-gray-500 mb-4">{result.hardware}</p>}
 
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-4">
@@ -84,6 +76,7 @@ function ResultsPanel({ result }: { result: any }) {
 
 /* ---------- Main Page ---------- */
 export default function BenchPage() {
+  const navigate = useNavigate();
   const { data: modelsData, loading: modelsLoading, error: modelsError } = useModels();
   const { data: hwData, loading: hwLoading, error: hwError } = useHardware();
   const [selectedModel, setSelectedModel] = useState<string>('');
@@ -116,7 +109,7 @@ export default function BenchPage() {
             </div>
           ) : null}
         </section>
-
+ 
         {/* Models */}
         <section className="bg-neutral-900 rounded-xl border border-neutral-800 p-5">
           <h2 className="text-sm font-semibold text-gray-400 mb-3 uppercase tracking-wider">Models</h2>
@@ -181,7 +174,7 @@ export default function BenchPage() {
         </section>
 
         {/* Results */}
-        {result && <ResultsPanel result={result} />}
+        {result && <ResultsPanel result={result} onDetail={(id) => navigate(`/results/${id}`)} />}
       </main>
     </div>
   );

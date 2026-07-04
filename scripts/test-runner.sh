@@ -7,7 +7,15 @@ set -euo pipefail
 PROJECT_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 CI_MODE="${1:-}"
 
-BUN=$(command -v bun) || { echo "Bun not found in PATH"; exit 1; }
+BUN=$(command -v bun)
+if [ -z "$BUN" ]; then
+    # Fallback for local development environment where .bun/bin might not be in PATH
+    if [ -x "/Users/miniadmin/.bun/bin/bun" ]; then
+        BUN="/Users/miniadmin/.bun/bin/bun"
+    else
+        echo "Bun not found in PATH or fallback /Users/miniadmin/.bun/bin/bun"; exit 1;
+    fi
+fi
 
 echo "=== E2E Test Runner ==="
 echo "Project root: $PROJECT_ROOT"

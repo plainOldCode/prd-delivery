@@ -21,14 +21,14 @@ export default defineConfig({
   webServer: [
      // Backend — Hono + Bun (in-memory SQLite)
      {
-      command: `cd ${projectRoot}/backend && DATABASE_URL="file::memory:" bun run src/index.ts`,
-      port: 3001,
-      reuseExistingServer: true,
-      timeout: 60_000,
-      readyCheck: {
-        url: 'http://localhost:3001/',
-        timeout: 20_000,
-        interval: 1_000,
+       command: `cd ${projectRoot}/backend && BENCH_MOCK=true DATABASE_URL="file::memory:" bun run src/index.ts`,
+       port: 3001,
+       reuseExistingServer: true,
+       timeout: 60_000,
+       readyCheck: {
+         url: 'http://localhost:3001/',
+         timeout: 20_000,
+         interval: 1_000,
        },
      },
      // Frontend — Vite dev server
