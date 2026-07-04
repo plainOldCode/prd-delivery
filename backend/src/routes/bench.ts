@@ -203,7 +203,7 @@ bench.get('/bench/:id', async (c) => {
 });
 
 // DELETE /api/bench/:id — Delete benchmark run and associated tests
-bench.delete('/api/bench/:id', async (c) => {
+bench.delete('/bench/:id', async (c) => {
   const id = c.req.param('id');
   try {
     await db`DELETE FROM bench_tests WHERE run_id = ${parseInt(id, 10)}`;
