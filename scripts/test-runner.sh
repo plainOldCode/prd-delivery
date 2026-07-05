@@ -50,8 +50,9 @@ if [ -n "$CI_MODE" ]; then
     cd "$PROJECT_ROOT/backend"
     export DATABASE_URL="file:$PROJECT_ROOT/backend/data.db"
     export BENCH_MOCK="${BENCH_MOCK:-false}"
-     # Fallback: build backend if dist/ doesn't exist yet (e.g. cache miss)
-    if [ ! -f "$PROJECT_ROOT/backend/dist/index.js" ]; then
+    export PORT=8080
+
+      # Fallback: build backend if dist/ doesn't exist yet (e.g. cache miss)
         echo "--- Building backend ---"
         cd "$PROJECT_ROOT/backend" && $BUN run build
     fi
