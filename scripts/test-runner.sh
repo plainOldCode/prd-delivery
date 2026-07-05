@@ -50,9 +50,15 @@ if [ -n "$CI_MODE" ]; then
     cd "$PROJECT_ROOT/backend"
     export DATABASE_URL="file:$PROJECT_ROOT/backend/data.db"
     export BENCH_MOCK="${BENCH_MOCK:-false}"
+     # Fallback: build backend if dist/ doesn't exist yet (e.g. cache miss)
+    if [ ! -f "$PROJECT_ROOT/backend/dist/index.js" ]; then
+        echo "--- Building backend ---"
+        cd "$PROJECT_ROOT/backend" && $BUN run build
+    fi
+
     nohup $BUN run start > "$PROJECT_ROOT/logs/backend.log" 2>&1 &
     BACKEND_PID=$!
-    
+
     # Wait for Backend to be ready
     echo "Waiting for Backend server (port 8080)..."
     for i in $(seq 1 30); do
