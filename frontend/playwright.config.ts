@@ -33,11 +33,8 @@ export default defineConfig({
      },
    }),
 
-   projects: [
-     { name: 'chromium', use: { browserName: 'chromium' } as any },
-    ...(process.env.CI ? [
-       { name: 'firefox', use: { browserName: 'firefox' } as any },
-       { name: 'webkit', use: { browserName: 'webkit' } as any },
-       ] : []),
-   ],
+	// CI에서는 chromium만 실행 (firefox/webkit 브라우저 미설치)
+	projects: [
+    	{ name: 'chromium', use: { browserName: 'chromium' } as any },
+    ],
 });

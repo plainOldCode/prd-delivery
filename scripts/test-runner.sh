@@ -75,8 +75,10 @@ if [ -n "$CI_MODE" ]; then
         sleep 1
     done
     
-    # Build Frontend (for preview mode)
-    cd "$PROJECT_ROOT/frontend" && $BUN x vite build
+    # Build Frontend (for preview mode) — set API URL for direct backend calls
+    cd "$PROJECT_ROOT/frontend"
+    export VITE_API_URL="http://localhost:8080/api"
+    $BUN x vite build
     
     # Start Frontend preview server in background
     nohup $BUN x vite preview --port 3000 > "$PROJECT_ROOT/logs/frontend.log" 2>&1 &

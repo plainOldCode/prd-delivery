@@ -1,5 +1,6 @@
 // src/auth/AuthContext.tsx — JWT 인증 컨텍스트
 import { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import { getApiUrl } from '../util/request.util';
 
 const TOKEN_KEY = 'auth_token';
 const USER_KEY = 'auth_user';
@@ -45,7 +46,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
      }, []);
 
   const login = async (username: string, password: string) => {
-      const res = await fetch('/api/auth/signin', {
+      const res = await fetch(getApiUrl('/api/auth/signin'), {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username, password }),
        });
@@ -56,7 +57,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signup = async (username: string, password: string, confirmPassword: string) => {
       if (password !== confirmPassword) throw new Error('Passwords do not match');
-      const res = await fetch('/api/auth/signup', {
+      const res = await fetch(getApiUrl('/api/auth/signup'), {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username, password, confirmPassword }),
        });
@@ -68,10 +69,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const logout = async () => {
       const token = localStorage.getItem(TOKEN_KEY);
       if (token) {
-        await fetch('/api/auth/signout', {
+        await fetch(getApiUrl('/api/auth/signout'), {
           method: 'POST', headers: { authorization: `Bearer ${token}` },
-          }).catch(() => {});
-       }
+           }).catch(() => {});
+        }
       clearAuth();
      };
 

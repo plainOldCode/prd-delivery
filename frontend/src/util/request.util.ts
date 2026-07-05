@@ -1,5 +1,16 @@
-// src/util/request.util.ts — API 요청 유�티리티 (Bearer 토큰 자동 첨부)
-const API_BASE = '/api';
+// src/util/request.util.ts — API 요청 유틸리티 (Bearer 토큰 자동 첨부)
+// 개발: Vite proxy(/api) 사용, CI/프로덕션: 절대 URL로 Backend 직접 호출
+const API_BASE = import.meta.env.VITE_API_URL || '/api';
+
+/** 전체 API URL 생성 — /api/xxx를 VITE_API_URL(절대 또는 상대)로 resolved */
+export function getApiUrl(path: string): string {
+  // Already absolute URL이면 그대로 반환
+  if (path.startsWith('http://') || path.startsWith('https://')) return path;
+  // /api/ 접두사를 API_BASE로 대체
+  const clean = path.startsWith('/api/') ? path.slice(4) : path;
+  return `${API_BASE}${clean}`;
+}
+
 const TOKEN_KEY = 'auth_token';
 
 /** API 경로 앞에 `/api` 붙이고 Bearer 토큰을 자동으로 추가하는 fetch 래퍼 */
