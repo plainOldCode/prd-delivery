@@ -2,7 +2,7 @@
 import { Hono } from 'hono';
 import { streamText } from 'hono/streaming';
 import db from '../db/client';
-import { listModels, listModelsMLX, saveBenchRun, runSpeedBench, runRetentionBench, runAccuracyBench, stubModelList } from '../services/bench';
+import { listModels, listModelsMLX, saveBenchRun, runSpeedBench, runRetentionBench, runAccuracyBench, stubModelList, BenchRun } from '../services/bench';
 import { detectHardware, stubHardware } from '../services/hardware';
 
 const bench = new Hono();
@@ -63,7 +63,7 @@ bench.post('/bench/speed', async (c) => {
     const ramGB = Math.round((hw.ramBytes / (1024 ** 3)) * 10) / 10;
     const hardwareLabel = `${hw.chip}, ${hw.cpuCoresPhysical} cores, ${ramGB}GB RAM`;
 
-    const benchRun: any = {
+    const benchRun: BenchRun = {
       runId: Date.now(),
       model,
       hardware: hardwareLabel,
@@ -77,7 +77,7 @@ bench.post('/bench/speed', async (c) => {
     await saveBenchRun(benchRun);
 
     return c.json({ ...result, hardware: hardwareLabel }, 201);
-   } catch (err: any) {
+   } catch (err) {
     return c.json({ error: err.message }, 500);
    }
 });
@@ -90,7 +90,7 @@ bench.post('/bench/retention', async (c) => {
    try {
     const result = await runRetentionBench(model, baseUrl);
     return c.json(result);
-   } catch (err: any) {
+   } catch (err) {
     return c.json({ error: err.message }, 500);
    }
 });
@@ -103,7 +103,7 @@ bench.post('/bench/accuracy', async (c) => {
    try {
     const result = await runAccuracyBench(model, baseUrl);
     return c.json(result);
-   } catch (err: any) {
+   } catch (err) {
     return c.json({ error: err.message }, 500);
    }
 });
@@ -117,7 +117,7 @@ bench.post('/bench/run', async (c) => {
 
   return streamText(c, async (stream) => {
     // Helper to send an SSE event with proper newline formatting
-    const sendEvent = async (event: string, data: any) => {
+    const sendEvent = async (event: string, data: object) => {
       const payload = JSON.stringify(data);
       await stream.write(`event: ${event}\ndata: ${payload}\n\n`);
     };
@@ -144,7 +144,7 @@ bench.post('/bench/run', async (c) => {
     const ramGB = Math.round((hw.ramBytes / (1024 ** 3)) * 10) / 10;
     const hardwareLabel = `${hw.chip}, ${hw.cpuCoresPhysical} cores, ${ramGB}GB RAM`;
 
-    const benchRun: any = {
+    const benchRun: BenchRun = {
       runId: Date.now(),
       model,
       hardware: hardwareLabel,
@@ -182,7 +182,7 @@ bench.get('/bench/history', async (c) => {
   try {
     const rows = await db`SELECT *, rowid as id FROM bench_runs ORDER BY created_at DESC LIMIT 50`;
     return c.json({ runs: Array.from(rows ?? []) });
-  } catch (err: any) {
+  } catch (err) {
     return c.json({ error: err.message, runs: [] }, 200);
   }
 });
