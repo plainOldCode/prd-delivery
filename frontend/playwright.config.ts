@@ -1,9 +1,11 @@
-// e2e/playwright.config.ts — E2E 테스트 설정 (Playwright)
+// playwright.config.ts — E2E 테스트 설정 (Playwright)
 import { defineConfig } from '@playwright/test';
 
 /**
- * baseURL는 test-runner.sh에서 Vite dev server를 백그라운드로 올리고
- * 환경변수 playwright.config.json을 덮어씁니다. 여기서는 기본값만 정의합니다.
+ * CI vs Local 동작 분리:
+ * - CI: test-runner.sh가 백그라운드에서 Backend(8080) + Frontend(3000) 서버를 기동
+        → webServer는 비활성화 (external-started server 가정)
+ * - Local: playwright config 자체에 baseURL만 있어서 dev sever 수동 또는 별도 스크립트 필요
  */
 export default defineConfig({
   testDir: './e2e',
@@ -22,31 +24,20 @@ export default defineConfig({
     video: process.env.CI ? 'retain-on-failure' : 'off',
    },
 
-     // Vite dev server를 playwright가 직접 시작 (Backend proxy 자동 매핑)
-  webServer: {
-       // Vite가 backend /api를 프록시하므로 frontend 서버만 기동하면 됨
-    command: 'npx vite build && npx vite preview --port 3000',
-    port: 3000,
-    reuseExistingServer: !process.env.CI,
-    timeout: 60_000,
-     // Health check — /가 200을 반환하면 ready 판단
-    url: 'http://localhost:3000',
-   },
+  // CI에서는 webServer 비활성화 (test-runner.sh가 서버를 기동함)
+  ...(process.env.CI ? {} : {
+    webServer: {
+       command: 'npx vite build && npx vite preview --port 3000',
+      port: 3000,
+     timeout: 60_000,
+     },
+   }),
 
    projects: [
-     {
-       name: 'chromium',
-       use: { browserName: 'chromium' },
-     },
-     ...(process.env.CI ? [
-       {
-         name: 'firefox',
-         use: { browserName: 'firefox' },
-       },
-       {
-         name: 'webkit',
-         use: { browserName: 'webkit' },
-       },
-     ] : []),
+     { name: 'chromium', use: { browserName: 'chromium' } as any },
+    ...(process.env.CI ? [
+       { name: 'firefox', use: { browserName: 'firefox' } as any },
+       { name: 'webkit', use: { browserName: 'webkit' } as any },
+       ] : []),
    ],
 });
