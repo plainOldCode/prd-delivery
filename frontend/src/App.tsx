@@ -74,6 +74,7 @@ export default function App() {
             <Route path="/bench" element={<BenchPage />} />
             <Route path="/bench/history" element={<BenchHistoryPage />} />
             <Route path="/bench/:runId" element={<BenchDetailWrapper />} />
+            <Route path="/results/:runId" element={<BenchDetailWrapper />} />
           </Routes>
         </BrowserRouter>
       </AuthProvider>
