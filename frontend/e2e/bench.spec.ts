@@ -1,13 +1,13 @@
 // e2e/bench.spec.ts — Benchmark Flow: Model Selection -> Run -> Progress -> Result -> Report
 import { test, expect } from '@playwright/test';
-import { ensureLoggedIn } from './auth.helpers';
+import { ensureLoggedIn } from './helpers/auth-helpers';
 
 test.describe('LLM Benchmark E2E', () => {
-  // Auth flow는 bench.spec.ts에서 직접 적지 않고 헬퍼로 추출 (DRY)
-  // auth-helpers가 로그인 상태를 Idempotent하게 보장하므로 중복 처리 안됨
+   // Auth flow는 bench.spec.ts에서 직접 적지 않고 헬퍼로 추출 (DRY)
+   // auth-helpers가 로그인 상태를 Idempotent하게 보장하므로 중복 처리 안됨
   test.beforeEach(async ({ page }) => {
     await ensureLoggedIn(page);
-   });
+    });
 
   test('Benchmark full cycle: Run to detailed report', async ({ page }) => {
      // 1. Navigate to Benchmark Page

@@ -6,39 +6,85 @@ on:
   pull_request:
     branches: [main]
 
+# Cancel redundant runs on the same branch
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  build-and-test:
-    runs-on: ubuntu-latest
+  verify:
+    name: Build, Test & Verify
+    runs-on: macos-latest
+
     steps:
       - uses: actions/checkout@v4
 
       - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
+        uses: oven-sh/setup-bun@v1
         with:
           bun-version: latest
 
-      - name: Backend install + test
+      - name: Cache backend deps
+        uses: actions/cache@v4
+        with:
+          path: ~/.bun/install/global
+          key: ${{ runner.os }}-bun-backend-${{ hashFiles('backend/bun.lock') }}
+          restore-keys: |
+            ${{ runner.OS }}-bun-backend-
+        # bun install creates node_modules too, so cache that as well
+
+      - name: Cache frontend deps
+        uses: actions/cache@v4
+        with:
+          path: frontend/node_modules
+          key: ${{ runner.os }}-node-frontend-${{ hashFiles('frontend/package-lock.json', 'frontend/bun.lock') }}
+          restore-keys: |
+            ${{ runner.OS }}-node-frontend-
+
+      - name: Install backend deps
+        run: cd backend && bun install
+
+      - name: Install frontend deps
+        run: cd frontend && bun install
+
+      - name: Backend build
+        run: cd backend && bun run build
+
+      - name: Backend test (in-memory DB)
         run: |
           cd backend
-          bun install
-          bun run build
-          export DATABASE_URL="file::memory:"
-          bun run test
+          DATABASE_URL="file::memory:" bun run test
 
-      - name: Frontend install + build
-        run: |
-          cd frontend
-          bun install
-          bun run build
+      - name: Frontend type check
+        run: cd frontend && bunx tsc --noEmit
+
+      - name: Frontend production build
+        run: cd frontend && bunx vite build
+
+
+  e2e:
+    name: E2E Tests (Playwright)
+    needs: [verify]
+    runs-on: macos-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v1
+        with:
+          bun-version: latest
+
+      - name: Install backend deps
+        run: cd backend && bun install
+
+      - name: Install frontend deps
+        run: cd frontend && bun install
 
       - name: Install Playwright browsers
-        run: |
-          cd frontend
-          bunx playwright install --with-deps chromium
+        run: cd frontend && npx playwright install chromium --with-deps
 
-      - name: E2E tests
-        env:
-          DATABASE_URL: "file::memory:"
+      - name: E2E tests (mock mode)
         run: |
-          cd frontend
-          bun run e2e
+          export BENCH_MOCK=true
+          bash scripts/test-runner.sh --ci

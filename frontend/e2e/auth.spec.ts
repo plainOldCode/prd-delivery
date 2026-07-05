@@ -1,7 +1,6 @@
 // e2e/auth.spec.ts — Sign Up → Sign In → Dashboard → Sign Out
 import { test, expect } from '@playwright/test';
-import { ensureLoggedIn } from './auth.helpers';
-import { TEST_USER } from './auth.helpers';
+import { ensureLoggedIn, TEST_USER } from './helpers/auth-helpers';
 
 test('Auth flow: Sign Up -> Sign In -> Dashboard -> Sign Out', async ({ page }) => {
   await page.goto('/auth');

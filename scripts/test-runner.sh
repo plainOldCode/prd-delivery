@@ -44,7 +44,7 @@ echo ""
 echo "--- Running E2E tests (Playwright webServer handles backend+frontend) ---"
 cd "$PROJECT_ROOT/frontend"
 export CI="$CI_MODE"
-npx playwright test --config=e2e/playwright.config.ts
+npx playwright test --config=playwright.config.ts
 EXIT_CODE=$?
 
 if [ $EXIT_CODE -eq 0 ]; then
