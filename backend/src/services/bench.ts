@@ -213,9 +213,8 @@ export async function saveBenchRun(run: BenchRun): Promise<number> {
   await db`INSERT INTO bench_runs (model_name, hardware, runtime, speed_prompt_tps, speed_gen_tps, speed_ttft_ms, retention_pct, accuracy_pct)
     VALUES (${run.model}, ${run.hardware}, ${run.runtime}, ${run.promptTps}, ${run.genTps}, ${run.ttftMs}, ${run.retentionPct}, ${run.accuracyPct})`;
 
-  const lastRow = await db`SELECT rowid FROM bench_runs ORDER BY rowid DESC LIMIT 1`;
-  const result = lastRow as Array<{ rowid: number }>;
-  const runId = result?.[0]?.rowid ?? 0;
+  const result = await db`SELECT last_insert_rowid() AS id`;
+  const runId = (result as Array<{ id: number }>)[0].id;
 
   for (const test of run.retentionTests ?? []) {
     await db`INSERT INTO bench_tests (run_id, category, name, passed, details)

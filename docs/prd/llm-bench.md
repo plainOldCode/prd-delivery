@@ -1,6 +1,6 @@
 ---
 title: "LLM Benchmark Dashboard"
-status: "draft"
+status: "implemented"
 created: 2026-07-03
 ---
 

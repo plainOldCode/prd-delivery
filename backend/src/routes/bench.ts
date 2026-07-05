@@ -189,28 +189,32 @@ bench.get('/bench/history', async (c) => {
 
 // GET /api/bench/:id — Get benchmark run details with tests
 bench.get('/bench/:id', async (c) => {
-  const id = c.req.param('id');
+  const parsedId = parseInt(c.req.param('id'), 10);
+  if (isNaN(parsedId)) return c.json({ error: 'Invalid ID' }, 400);
   try {
-    const rows = await db`SELECT *, rowid as id FROM bench_runs WHERE rowid = ${parseInt(id, 10)} LIMIT 1`;
+    const rows = await db`SELECT *, rowid as id FROM bench_runs WHERE rowid = ${parsedId} LIMIT 1`;
     const run = Array.from(rows ?? [])[0];
     if (!run) return c.json({ error: 'Not found' }, 404);
-    const tests = await db`SELECT * FROM bench_tests WHERE run_id = ${parseInt(id, 10)} ORDER BY category, name`;
+    const tests = await db`SELECT * FROM bench_tests WHERE run_id = ${parsedId} ORDER BY category, name`;
     return c.json({ run, tests: Array.from(tests ?? []) });
-  } catch (err: any) {
-    return c.json({ error: err.message }, 500);
-  }
+   } catch (err) {
+    return c.json({ error: String(err) }, 500);
+   }
+
 });
 
 // DELETE /api/bench/:id — Delete benchmark run and associated tests
 bench.delete('/bench/:id', async (c) => {
-  const id = c.req.param('id');
+  const parsedId = parseInt(c.req.param('id'), 10);
+  if (isNaN(parsedId)) return c.json({ error: 'Invalid ID' }, 400);
   try {
-    await db`DELETE FROM bench_tests WHERE run_id = ${parseInt(id, 10)}`;
-    await db`DELETE FROM bench_runs WHERE rowid = ${parseInt(id, 10)}`;
+    await db`DELETE FROM bench_tests WHERE run_id = ${parsedId}`;
+    await db`DELETE FROM bench_runs WHERE rowid = ${parsedId}`;
     return c.json({ deleted: true });
-  } catch (err: any) {
-    return c.json({ error: err.message }, 500);
-  }
+    } catch (err) {
+    return c.json({ error: String(err) }, 500);
+     }
+
 });
 
 export default bench;
