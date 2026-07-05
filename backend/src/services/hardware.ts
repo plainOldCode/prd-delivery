@@ -43,8 +43,19 @@ function detectMacOS(): HardwareInfo {
     cpuCoresPhysical,
     cpuCoresLogical,
     ramBytes,
-    gpuModel: 'Apple Integrated GPU', // macOS에서 GPU 모델명 얻기 어렵으므로 기본값 사용
-   };
+    gpuModel: resolveMacOSGpu(),
+    };
+}
+
+/** macOS GPU 모델명을 system_profiler에서 실제 파싱 */
+function resolveMacOSGpu(): string {
+  try {
+    const out: string = spawnSync('system_profiler', ['SPDisplaysDataType'], { encoding: 'utf8' }).stdout ?? '';
+    const match = out.match(/Chipset:\s*(.+)/);
+    return match?.[1]?.trim() || 'Apple Integrated GPU';
+    } catch {
+    return 'Apple Integrated GPU';
+    }
 }
 
 function detectLinux(): HardwareInfo {

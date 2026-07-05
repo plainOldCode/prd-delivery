@@ -208,30 +208,37 @@ export async function runAccuracyBench(
   return { score, details: tests };
 }
 
-/** Save run results to database and return the generated ID */
+/** Save run results to database in a single transaction */
 export async function saveBenchRun(run: BenchRun): Promise<number> {
-  await db`INSERT INTO bench_runs (model_name, hardware, runtime, speed_prompt_tps, speed_gen_tps, speed_ttft_ms, retention_pct, accuracy_pct)
-    VALUES (${run.model}, ${run.hardware}, ${run.runtime}, ${run.promptTps}, ${run.genTps}, ${run.ttftMs}, ${run.retentionPct}, ${run.accuracyPct})`;
+  await db`BEGIN TRANSACTION`;
+  try {
+    await db`INSERT INTO bench_runs (model_name, hardware, runtime, speed_prompt_tps, speed_gen_tps, speed_ttft_ms, retention_pct, accuracy_pct)
+      VALUES (${run.model}, ${run.hardware}, ${run.runtime}, ${run.promptTps}, ${run.genTps}, ${run.ttftMs}, ${run.retentionPct}, ${run.accuracyPct})`;
 
-  const result = await db`SELECT last_insert_rowid() AS id`;
-  const runId = (result as Array<{ id: number }>)[0].id;
+    const result = await db`SELECT last_insert_rowid() AS id`;
+    const runId = (result as Array<{ id: number }>)[0].id;
 
-  for (const test of run.retentionTests ?? []) {
-    await db`INSERT INTO bench_tests (run_id, category, name, passed, details)
-      VALUES (${runId}, ${test.category}, ${test.name}, ${test.passed ? 1 : 0}, ${JSON.stringify(test.details)})`;
-  }
+    for (const test of run.retentionTests ?? []) {
+      await db`INSERT INTO bench_tests (run_id, category, name, passed, details)
+        VALUES (${runId}, ${test.category}, ${test.name}, ${test.passed ? 1 : 0}, ${JSON.stringify(test.details)})`;
+     }
 
-  for (const test of run.accuracyTests ?? []) {
-    await db`INSERT INTO bench_tests (run_id, category, name, passed, details)
-      VALUES (${runId}, ${test.category}, ${test.name}, ${test.passed ? 1 : 0}, ${JSON.stringify(test.details)})`;
-  }
+    for (const test of run.accuracyTests ?? []) {
+      await db`INSERT INTO bench_tests (run_id, category, name, passed, details)
+        VALUES (${runId}, ${test.category}, ${test.name}, ${test.passed ? 1 : 0}, ${JSON.stringify(test.details)})`;
+     }
 
-  for (const test of run.speedTests ?? []) {
-    await db`INSERT INTO bench_tests (run_id, category, name, passed, details)
-      VALUES (${runId}, ${test.category}, ${test.name}, ${1}, ${JSON.stringify(test.details)})`;
-  }
+    for (const test of run.speedTests ?? []) {
+      await db`INSERT INTO bench_tests (run_id, category, name, passed, details)
+        VALUES (${runId}, ${test.category}, ${test.name}, ${1}, ${JSON.stringify(test.details)})`;
+     }
 
-  return runId;
+    await db`COMMIT`;
+    return runId;
+   } catch (err) {
+    await db`ROLLBACK`;
+    throw err;
+   }
 }
 
 /** Stub implementations for testing without actual models */
