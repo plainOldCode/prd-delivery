@@ -147,7 +147,7 @@ export function useRunBenchmark() {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
-          ...(token ? { authorization: `Bearer ${token}` } : {}),
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
         body: JSON.stringify({ model }),
       });
