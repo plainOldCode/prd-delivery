@@ -1,17 +1,16 @@
 // src/pages/BenchResultPage.tsx — Detailed Benchmark Report (Vibe-Sleek Dark)
 import { useParams } from 'react-router-dom';
 import { useBenchDetail } from '../hooks/useBench';
+import SpeedChart from '../components/SpeedChart';
 
 /* ---------- Metric Gauge ---------- */
 function MetricGauge({ label, value, unit }: { label: string; value: number; unit?: string }) {
-  // Calculate rotation angle for the gauge (0 to 180 degrees)
   const angle = (value / 100) * 180;
   const colorClass = value > 80 ? 'text-green-400' : value > 50 ? 'text-yellow-400' : 'text-red-400';
 
   return (
     <div className="flex flex-col items-center text-center p-4 bg-neutral-900 rounded-2xl border border-neutral-800">
       <div className="relative w-32 h-16 overflow-hidden mb-2">
-        {/* Background Arc */}
         <svg className="absolute inset-0 w-full h-full" viewBox="0 0 100 50">
           <path 
             d="M 10,50 A 40,40 0 0,1 90,50" 
@@ -21,7 +20,6 @@ function MetricGauge({ label, value, unit }: { label: string; value: number; uni
             strokeLinecap="round" 
           />
         </svg>
-        {/* Active Arc */}
         <svg className="absolute inset-0 w-full h-full" viewBox="0 0 100 50">
           <path 
             d="M 10,50 A 40,40 0 0,1 90,50" 
@@ -30,7 +28,7 @@ function MetricGauge({ label, value, unit }: { label: string; value: number; uni
             strokeWidth="8" 
             strokeLinecap="round" 
             className={colorClass}
-            style={{ strokeDasharray: `125.6 ${125.6 * (1 - value / 100)}` }} // Simplified arc length logic
+            style={{ strokeDasharray: `125.6 ${125.6 * (1 - value / 100)}` }}
           />
         </svg>
       </div>
@@ -92,7 +90,6 @@ export default function BenchResultPage() {
         {/* Summary Section */}
         <section className="grid grid-cols-1 md:grid-cols-3 gap-6">
           <div className="md:col-span-2 bg-neutral-900 rounded-3xl border border-neutral-800 p-8 flex flex-col justify-center relative overflow-hidden">
-            {/* Background Glow */}
             <div className="absolute -top-10 -right-10 w-40 h-40 bg-red-600/10 blur-[60px] rounded-full" />
             
             <h2 className="text-3xl font-bold text-white mb-2">{run.model}</h2>
@@ -131,11 +128,25 @@ export default function BenchResultPage() {
           </div>
         </section>
 
+        {/* Speed Chart — Live progress visualization */}
+        <section className="bg-neutral-900 rounded-3xl border border-neutral-800 p-6">
+          <h3 className="text-sm font-semibold text-gray-400 mb-4 uppercase tracking-wider">Token Speed Over Time</h3>
+          <SpeedChart data={[]} />
+          <div className="flex gap-6 mt-3 text-xs text-gray-500">
+            <span className="flex items-center gap-1">
+              <span className="w-3 h-0.5 bg-red-500 inline-block"></span> Prompt TPS
+            </span>
+            <span className="flex items-center gap-1">
+              <span className="w-3 h-0.5 bg-blue-500 inline-block"></span> Gen TPS
+            </span>
+          </div>
+        </section>
+
         {/* Metrics Grid */}
         <section className="grid grid-cols-2 sm:grid-cols-3 gap-4">
           <MetricGauge label="Retention" value={retention_pct || 0} />
           <MetricGauge label="Accuracy" value={accuracy_pct || 0} />
-          <MetricGauge label="TFT Speed" value={(ttft_ms || 0) / 10} /> {/* Normalize for gauge */}
+          <MetricGauge label="TFT Speed" value={(ttft_ms || 0) / 10} />
         </section>
 
         {/* Detailed Test Cases */}

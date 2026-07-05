@@ -3,6 +3,13 @@ import { app } from '../index';
 import db from '../db/client';
 
 describe('LLM Benchmark API', () => {
+    // Clean slate before each test to avoid autoincrement conflicts
+    it('setup: clear bench tables', async () => {
+        await db`DELETE FROM bench_tests`;
+        await db`DELETE FROM bench_runs`;
+        await db`DELETE FROM sqlite_sequence WHERE name IN ('bench_runs', 'bench_tests')`;
+    });
+
     // SSE 스트리밍 엔드포인트는 201 대신 200을 반환 — Hono/SSE 기본 동작
     it('POST /api/bench/run executes full suite and returns 200 (SSE)', async () => {
         const createReq = new Request('http://localhost/api/bench/run', {

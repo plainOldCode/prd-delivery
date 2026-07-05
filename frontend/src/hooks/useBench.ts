@@ -62,6 +62,12 @@ export interface BenchDetail {
   tests: any[];
 }
 
+export interface SpeedDataPoint {
+  time: number;    // seconds elapsed
+  promptTps: number;
+  genTps: number;
+}
+
 /* ---------- Generic data-fetch hook ---------- */
 function useFetch<T>(fetcher: () => Promise<T>) {
   const [data, setData] = useState<T | null>(null);
@@ -93,7 +99,7 @@ function useFetch<T>(fetcher: () => Promise<T>) {
      }
    }, [fetcher]);
 
-  return { data, loading, error, refetch };
+  return { data, loading, error, refetch } as const;
 }
 
 /* ---------- useModels() ---------- */
@@ -125,12 +131,14 @@ export function useRunBenchmark() {
   const [running, setRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [progress, setProgress] = useState({ message: '', percent: 0 });
+  const [speedData, setSpeedData] = useState<SpeedDataPoint[]>([]);
 
   const run = useCallback(async (model: string) => {
     setRunning(true);
     setError(null);
     setResult(null);
     setProgress({ message: 'Benchmark 준비 중...', percent: 0 });
+    setSpeedData([]);
 
     try {
       // In-house fetch to handle SSE stream since our request.util doesn't support streams yet
@@ -150,27 +158,47 @@ export function useRunBenchmark() {
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
       let buffer = '';
+      const startTime = Date.now();
 
       while (true) {
         const { value, done } = await reader.read();
         if (done) break;
 
         buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\\n\\n');
+        const lines = buffer.split('\n\n');
         buffer = lines.pop() || '';
 
         for (const line of lines) {
-          const [eventLine, ...dataLines] = line.split('\\n');
+          const [eventLine, ...dataLines] = line.split('\n');
           const event = eventLine.replace('event: ', '').trim();
-          const dataStr = dataLines.join('\\n').replace('data: ', '').trim();
+          const dataStr = dataLines.join('\n').replace('data: ', '').trim();
           
           if (!dataStr) continue;
           try {
             const payload = JSON.parse(dataStr);
             if (event === 'progress') {
               setProgress({ message: payload.message, percent: payload.percent });
+              
+              // Track speed data points during streaming
+              const elapsed = (Date.now() - startTime) / 1000;
+              if (payload.percent >= 40 && payload.percent < 70) {
+                // During speed test phase, extract speed metrics if available
+                const speedDataPoint: SpeedDataPoint = {
+                  time: elapsed,
+                  promptTps: payload.speed?.promptTps || 0,
+                  genTps: payload.speed?.genTps || 0,
+                };
+                setSpeedData(prev => [...prev, speedDataPoint]);
+              }
             } else if (event === 'result') {
               setResult(payload);
+              // Add final speed data point
+              const finalSpeedDataPoint: SpeedDataPoint = {
+                time: (Date.now() - startTime) / 1000,
+                promptTps: payload.speed?.promptTps || 0,
+                genTps: payload.speed?.genTps || 0,
+              };
+              setSpeedData(prev => [...prev, finalSpeedDataPoint]);
             } else if (event === 'error') {
               throw new Error(payload.message);
             }
@@ -187,5 +215,5 @@ export function useRunBenchmark() {
     }
   }, []);
 
-  return { result, running, error, progress, run };
+  return { result, running, error, progress, run, speedData } as const;
 }

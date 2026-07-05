@@ -113,68 +113,67 @@ bench.post('/bench/run', async (c) => {
   const { model, baseUrl = 'http://localhost:11434' } = await c.req.json();
   if (!model) return c.json({ error: 'model is required' }, 400);
 
+  const startTime = Date.now();
+
   return streamText(c, async (stream) => {
-    try {
-      // Helper to send an SSE event
-      const sendEvent = async (event: string, data: any) => {
-        await stream.write(`event: ${event}\\ndata: ${JSON.stringify(data)}\\n\\n`);
-      };
+    // Helper to send an SSE event with proper newline formatting
+    const sendEvent = async (event: string, data: any) => {
+      const payload = JSON.stringify(data);
+      await stream.write(`event: ${event}\ndata: ${payload}\n\n`);
+    };
 
-      await sendEvent('progress', { message: '🏃 Initializing benchmark suite...', percent: 10 });
+    await sendEvent('progress', { message: '🏃 Initializing benchmark suite...', percent: 10 });
 
-      // Step 1: Speed Bench
-      await sendEvent('progress', { message: `⚡ Measuring speed for ${model}...`, percent: 20 });
-      const speedResult = await runSpeedBench(model, baseUrl).catch((e: Error) => ({ promptTps: 0, genTps: 0, ttftMs: 0, error: e.message }));
-      await sendEvent('progress', { message: '✅ Speed test complete.', percent: 40 });
+    // Step 1: Speed Bench
+    await sendEvent('progress', { message: `⚡ Measuring speed for ${model}...`, percent: 20 });
+    const speedResult = await runSpeedBench(model, baseUrl).catch((e: Error) => ({ promptTps: 0, genTps: 0, ttftMs: 0, error: e.message }));
+    await sendEvent('progress', { message: '✅ Speed test complete.', percent: 40 });
 
-      // Step 2: Retention Bench
-      await sendEvent('progress', { message: `🧠 Evaluating context retention for ${model}...`, percent: 50 });
-      const retentionResult = await runRetentionBench(model, baseUrl).catch((e: Error) => ({ score: 0, details: [], error: e.message }));
-      await sendEvent('progress', { message: '✅ Retention test complete.', percent: 70 });
+    // Step 2: Retention Bench
+    await sendEvent('progress', { message: `🧠 Evaluating context retention for ${model}...`, percent: 50 });
+    const retentionResult = await runRetentionBench(model, baseUrl).catch((e: Error) => ({ score: 0, details: [], error: e.message }));
+    await sendEvent('progress', { message: '✅ Retention test complete.', percent: 70 });
 
-      // Step 3: Accuracy Bench
-      await sendEvent('progress', { message: `🎯 Verifying accuracy for ${model}...`, percent: 80 });
-      const accuracyResult = await runAccuracyBench(model, baseUrl).catch((e: Error) => ({ score: 0, details: [], error: e.message }));
-      await sendEvent('progress', { message: '✅ Accuracy test complete.', percent: 95 });
+    // Step 3: Accuracy Bench
+    await sendEvent('progress', { message: `🎯 Verifying accuracy for ${model}...`, percent: 80 });
+    const accuracyResult = await runAccuracyBench(model, baseUrl).catch((e: Error) => ({ score: 0, details: [], error: e.message }));
+    await sendEvent('progress', { message: '✅ Accuracy test complete.', percent: 95 });
 
-      // Finalize and Save
-      const hw = await detectHardware().catch(() => stubHardware());
-      const ramGB = Math.round((hw.ramBytes / (1024 ** 3)) * 10) / 10;
-      const hardwareLabel = `${hw.chip}, ${hw.cpuCoresPhysical} cores, ${ramGB}GB RAM`;
+    // Finalize and Save
+    const hw = await detectHardware().catch(() => stubHardware());
+    const ramGB = Math.round((hw.ramBytes / (1024 ** 3)) * 10) / 10;
+    const hardwareLabel = `${hw.chip}, ${hw.cpuCoresPhysical} cores, ${ramGB}GB RAM`;
 
-      const benchRun: any = {
-        runId: Date.now(),
-        model,
-        hardware: hardwareLabel,
-        runtime: 'ollama',
-        promptTps: speedResult.promptTps ?? 0,
-        genTps: speedResult.genTps ?? 0,
-        ttftMs: speedResult.ttftMs ?? 0,
-        retentionPct: retentionResult.score ?? 0,
-        accuracyPct: accuracyResult.score ?? 0,
-        speedTests: [{ category: 'speed', name: `speed-${model}`, passed: true, details: speedResult }],
-        retentionTests: retentionResult.details ?? [],
-        accuracyTests: accuracyResult.details ?? [],
-      };
+    const benchRun: any = {
+      runId: Date.now(),
+      model,
+      hardware: hardwareLabel,
+      runtime: 'backend',
+      promptTps: speedResult.promptTps ?? 0,
+      genTps: speedResult.genTps ?? 0,
+      ttftMs: speedResult.ttftMs ?? 0,
+      retentionPct: retentionResult.score ?? 0,
+      accuracyPct: accuracyResult.score ?? 0,
+      speedTests: [{ category: 'speed', name: `speed-${model}`, passed: true, details: speedResult }],
+      retentionTests: retentionResult.details ?? [],
+      accuracyTests: accuracyResult.details ?? [],
+    };
 
-      const actualRunId = await saveBenchRun(benchRun);
+    const actualRunId = await saveBenchRun(benchRun);
 
-      const finalResult = {
-        runId: actualRunId, // Handle possible return type from service
-        model,
-        hardware: hardwareLabel,
-        speed: speedResult,
-        retention: retentionResult,
-        accuracy: accuracyResult,
-        saved: true,
-      };
+    const finalResult = {
+      runId: actualRunId,
+      model,
+      hardware: hardwareLabel,
+      speed: speedResult,
+      retention: retentionResult,
+      accuracy: accuracyResult,
+      saved: true,
+    };
 
-      await sendEvent('result', finalResult);
-      await sendEvent('progress', { message: '🎉 Benchmark finished!', percent: 100 });
+    await sendEvent('result', finalResult);
+    await sendEvent('progress', { message: '🎉 Benchmark finished!', percent: 100 });
 
-    } catch (err: any) {
-      await stream.write(`event: error\\ndata: ${JSON.stringify({ message: err.message })}\\n\\n`);
-    }
   });
 });
 
@@ -188,7 +187,7 @@ bench.get('/bench/history', async (c) => {
   }
 });
 
-// GET /api/bench/:id — Get benchmark la-run details with tests
+// GET /api/bench/:id — Get benchmark run details with tests
 bench.get('/bench/:id', async (c) => {
   const id = c.req.param('id');
   try {

@@ -1,20 +1,34 @@
 // src/pages/BenchHistoryPage.tsx — Benchmark history list (다크 테마)
 import { Link } from 'react-router-dom';
 import { useHistory } from '../hooks/useBench';
+import { useState } from 'react';
 
 /* ---------- Row ---------- */
-function HistoryRow({ run }: { run: any }) {
+function HistoryRow({ run, isSelected, onToggle }: { run: any; isSelected: boolean; onToggle: (id: number) => void }) {
   const date = new Date(run.created_at).toLocaleString();
   return (
-    <Link
-      to={{ pathname: `/bench/${run.rowid ?? run.id}` }}
-      className="flex items-center gap-4 bg-neutral-900 hover:bg-neutral-800 rounded-xl p-4 border border-transparent hover:border-neutral-700 transition-colors"
+    <div
+      className={`flex items-center gap-4 bg-neutral-900 hover:bg-neutral-800 rounded-xl p-4 border transition-colors ${
+        isSelected ? 'border-red-500 bg-red-900/20' : 'border-transparent hover:border-neutral-700'
+      }`}
     >
+      {/* Checkbox */}
+      <input
+        type="checkbox"
+        checked={isSelected}
+        onChange={() => onToggle(run.rowid ?? run.id)}
+        className="w-4 h-4 rounded accent-red-500"
+        aria-label={`Select run ${run.model}`}
+      />
+
       {/* Model */}
-      <div className="flex-1 min-w-0">
+      <Link
+        to={{ pathname: `/bench/${run.rowid ?? run.id}` }}
+        className="flex-1 min-w-0"
+      >
         <p className="text-white font-semibold truncate">{run.model}</p>
         <p className="text-xs text-gray-500 mt-0.5">{run.hardware ?? '-'}</p>
-      </div>
+      </Link>
 
       {/* Scores */}
       <div className="flex gap-4 text-sm text-gray-400 font-mono">
@@ -29,7 +43,64 @@ function HistoryRow({ run }: { run: any }) {
         {date}
         <p className="mt-0.5">{run.runtime ?? '-'}</p>
       </div>
-    </Link>
+    </div>
+  );
+}
+
+/* ---------- Compare Panel ---------- */
+function ComparePanel({ runs }: { runs: any[] }) {
+  if (runs.length < 2) return null;
+
+  return (
+    <div className="bg-neutral-900 rounded-2xl border border-red-800 p-6 space-y-4">
+      <h3 className="text-lg font-bold text-white flex items-center gap-2">
+        <svg className="w-5 h-5 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+        </svg>
+        Comparison View
+      </h3>
+
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b border-neutral-700">
+              <th className="text-left py-2 text-gray-400 font-medium">Model</th>
+              <th className="text-right py-2 text-gray-400 font-medium">Prompt TPS</th>
+              <th className="text-right py-2 text-gray-400 font-medium">Gen TPS</th>
+              <th className="text-right py-2 text-gray-400 font-medium">TTFT (ms)</th>
+              <th className="text-right py-2 text-gray-400 font-medium">Retention</th>
+              <th className="text-right py-2 text-gray-400 font-medium">Accuracy</th>
+            </tr>
+          </thead>
+          <tbody>
+            {runs.map((run) => (
+              <tr key={run.rowid ?? run.id} className="border-b border-neutral-800 hover:bg-neutral-800/50">
+                <td className="py-3 text-white font-medium">{run.model}</td>
+                <td className="py-3 text-right font-mono text-gray-300">
+                  {run.prompt_tps?.toFixed(1) ?? '-'}
+                </td>
+                <td className="py-3 text-right font-mono text-gray-300">
+                  {run.gen_tps?.toFixed(1) ?? '-'}
+                </td>
+                <td className="py-3 text-right font-mono text-gray-300">
+                  {run.ttft_ms?.toFixed(0) ?? '-'}
+                </td>
+                <td className="py-3 text-right font-mono">
+                  <span className={run.retention_pct! > 70 ? 'text-green-400' : 'text-yellow-400'}>
+                    {run.retention_pct?.toFixed(1) ?? '-'}%
+                  </span>
+                </td>
+                <td className="py-3 text-right font-mono">
+                  <span className={run.accuracy_pct! > 70 ? 'text-green-400' : 'text-yellow-400'}>
+                    {run.accuracy_pct?.toFixed(1) ?? '-'}%
+                  </span>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
   );
 }
 
@@ -113,13 +184,37 @@ function ErrorBanner({ message }: { message: string }) {
 /* ---------- Main History Page ---------- */
 export default function BenchHistoryPage() {
   const { data, loading, error } = useHistory();
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+
+  const toggleSelection = (id: number) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
+
+  const selectedRuns = data?.runs.filter((r) => selectedIds.has(r.rowid ?? r.id)) ?? [];
 
   return (
     <div className="min-h-screen bg-[#0A0A0A] text-gray-200">
       {/* Header */}
       <header className="border-b border-neutral-800 px-6 py-4 flex items-center justify-between">
         <h1 className="text-xl font-bold text-white">Benchmark History</h1>
-        <a href="/bench" className="text-sm text-gray-400 hover:text-white transition">← Run New Benchmark</a>
+        <div className="flex items-center gap-3">
+          {selectedIds.size > 0 && (
+            <span className="text-xs text-red-400 bg-red-900/30 px-2 py-1 rounded">
+              {selectedIds.size} selected
+            </span>
+          )}
+          <a href="/bench" className="text-sm text-gray-400 hover:text-white transition">
+            ← Run New Benchmark
+          </a>
+        </div>
       </header>
 
       {/* Body */}
@@ -137,8 +232,20 @@ export default function BenchHistoryPage() {
         )}
 
         {data?.runs?.map((row) => (
-          <HistoryRow key={row.id ?? row.rowid} run={row} />
+          <HistoryRow
+            key={row.id ?? row.rowid}
+            run={row}
+            isSelected={selectedIds.has(row.rowid ?? row.id)}
+            onToggle={toggleSelection}
+          />
         ))}
+
+        {/* Compare Panel */}
+        {selectedRuns.length >= 2 && (
+          <div className="mt-6">
+            <ComparePanel runs={selectedRuns} />
+          </div>
+        )}
       </main>
     </div>
   );
