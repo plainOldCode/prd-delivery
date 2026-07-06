@@ -20,19 +20,22 @@ import * as healthRoutes from './routes/health';
 import { taskRoutes } from './routes/tasks';
 import { authRoutes } from './routes/auth';
 import benchRoutes from './routes/bench';
+import agentRoutes from './routes/bench-agent';
 app.route('/api', healthRoutes.healthRoutes);
 app.route('/api', taskRoutes);
 app.route('/api', authRoutes);
 app.route('/api', benchRoutes);
+app.route('/api/agent', agentRoutes);
 
 export { app };
 
 /* ------------------------------------------------------------------ */
-/*  Start only when run directly                                        */
+/*  Start only when run directly                                         */
 /* ------------------------------------------------------------------ */
 async function start() {
   const { initDb } = await import('./db/client');
   await initDb();
+  await import('./services/advisor').then(m => m.ensureIndexes());
 
   const port = parseInt(process.env.PORT ?? '3001', 10);
   serve({ fetch: (request) => app.fetch(request), port });
