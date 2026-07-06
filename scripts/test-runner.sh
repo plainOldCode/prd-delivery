@@ -53,12 +53,11 @@ if [ -n "$CI_MODE" ]; then
     export PORT=8080
 
       # Fallback: build backend if dist/ doesn't exist yet (e.g. cache miss)
-        echo "--- Building backend ---"
-        cd "$PROJECT_ROOT/backend" && $BUN run build
-    fi
+       echo "--- Building backend ---"
+       cd "$PROJECT_ROOT/backend" && $BUN run build
 
-    nohup $BUN run start > "$PROJECT_ROOT/logs/backend.log" 2>&1 &
-    BACKEND_PID=$!
+      nohup $BUN run start > "$PROJECT_ROOT/logs/backend.log" 2>&1 &
+      BACKEND_PID=$!
 
     # Wait for Backend to be ready
     echo "Waiting for Backend server (port 8080)..."
