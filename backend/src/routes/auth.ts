@@ -25,8 +25,9 @@ authRoutes.post('/auth/signup', async (c) => {
 
   const passwordHash = await hashPassword(body.password);
   const result = await db`INSERT INTO users (username, password_hash) VALUES (${body.username}, ${passwordHash})`;
+  const token = await generateToken({ id: Number(result.lastInsertRowid), username: body.username });
 
-  return c.json({ id: Number(result.lastInsertRowid), username: body.username }, 201);
+  return c.json({ id: Number(result.lastInsertRowid), username: body.username, token }, 201);
 });
 
 // POST /auth/signin

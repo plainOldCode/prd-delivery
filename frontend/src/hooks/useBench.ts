@@ -1,7 +1,7 @@
 // src/hooks/useBench.ts — Benchmark API용 커스텀 훅 모음
 import { useState, useCallback, useEffect } from 'react';
 
-import { get, post } from '../util/request.util';
+import { get, post, getApiUrl } from '../util/request.util';
 
 /* ---------- Types ---------- */
 export interface BenchDetailItem {
@@ -157,7 +157,7 @@ export function useRunBenchmark() {
         // In-house fetch to handle SSE stream since our request.util doesn't support streams yet
       const token = localStorage.getItem('auth_token');
       
-      const response = await fetch('/api/bench/run', {
+      const response = await fetch(getApiUrl('/api/bench/run'), {
         method: 'POST',
         headers: { 
             'Content-Type': 'application/json',

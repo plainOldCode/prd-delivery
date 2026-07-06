@@ -27,10 +27,11 @@ export default defineConfig({
 
   // CI에서는 webServer 비활성화 (test-runner.sh가 서버를 기동함)
   ...(process.env.CI ? {} : {
-    webServer: {
-       command: 'npx vite build && npx vite preview --port 3000',
-      port: 3000,
-     timeout: 60_000,
+   webServer: {
+      command: 'npx vite build && npx vite preview --port 3000',
+     port: 3000,
+    timeout: 60_000,
+     env: { VITE_API_URL: 'http://localhost:8080/api' },
      },
    }),
 

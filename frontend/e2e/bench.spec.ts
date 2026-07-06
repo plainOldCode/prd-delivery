@@ -1,6 +1,7 @@
 // e2e/bench.spec.ts — Benchmark Flow: Model Selection -> Run -> Progress -> Result -> Report
 import { test, expect } from '@playwright/test';
 import { ensureLoggedIn } from './helpers/auth-helpers';
+import { TEST_USER } from './helpers/auth-helpers.constants';
 
 test.describe('LLM Benchmark E2E', () => {
    // Auth flow는 bench.spec.ts에서 직접 적지 않고 헬퍼로 추출 (DRY)

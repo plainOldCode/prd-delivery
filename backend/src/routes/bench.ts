@@ -171,10 +171,16 @@ bench.post('/bench/run', async (c) => {
 bench.get('/bench/history', async (c) => {
   try {
     const rows = await db`SELECT *, rowid as id FROM bench_runs ORDER BY created_at DESC LIMIT 50`;
-    return c.json({ runs: Array.from(rows ?? []) });
-  } catch (err) {
+    // Normalize: snake_case DB columns → camelCase frontend expects
+   const runs = Array.from(rows ?? []).map(r => ({
+        id: r.id, run_id: r.run_id, model: r.model_name, hardware: r.hardware,
+        runtime: r.runtime, prompt_tps: r.speed_prompt_tps, gen_tps: r.speed_gen_tps,
+        ttft_ms: r.speed_ttft_ms, retention_pct: r.retention_pct, accuracy_pct: r.accuracy_pct, created_at: r.created_at
+      }));
+    return c.json({ runs });
+   } catch (err) {
     return c.json({ error: String(err), runs: [] }, 200);
-  }
+   }
 });
 
 // GET /api/bench/:id — Get benchmark run details with tests
@@ -183,13 +189,19 @@ bench.get('/bench/:id', async (c) => {
   if (isNaN(parsedId)) return c.json({ error: 'Invalid ID' }, 400);
   try {
     const rows = await db`SELECT *, rowid as id FROM bench_runs WHERE rowid = ${parsedId} LIMIT 1`;
-    const run = Array.from(rows ?? [])[0];
-    if (!run) return c.json({ error: 'Not found' }, 404);
+    const runRaw = Array.from(rows ?? [])[0];
+    if (!runRaw) return c.json({ error: 'Not found' }, 404);
+     // Normalize to camelCase
+   const run = {
+        id: runRaw.id, run_id: runRaw.run_id, model: runRaw.model_name, hardware: runRaw.hardware,
+        runtime: runRaw.runtime, prompt_tps: runRaw.speed_prompt_tps, gen_tps: runRaw.speed_gen_tps,
+        ttft_ms: runRaw.speed_ttft_ms, retention_pct: runRaw.retention_pct, accuracy_pct: runRaw.accuracy_pct, created_at: runRaw.created_at
+      };
     const tests = await db`SELECT * FROM bench_tests WHERE run_id = ${parsedId} ORDER BY category, name`;
     return c.json({ run, tests: Array.from(tests ?? []) });
-  } catch (err) {
+   } catch (err) {
     return c.json({ error: String(err) }, 500);
-  }
+   }
 });
 
 // DELETE /api/bench/:id — Delete benchmark run and associated tests

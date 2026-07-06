@@ -63,7 +63,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
        });
       if (!res.ok) throw new Error((await res.json()).error ?? 'Signup failed');
       const data = await res.json();
-      setAuth('', { id: data.id, username: data.username });
+      setAuth(data.token, { id: data.id, username: data.username });
      };
 
   const logout = async () => {
