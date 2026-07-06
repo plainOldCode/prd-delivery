@@ -35,6 +35,10 @@ export function computeComposite(
   const ttftScore = Math.max(100 - ttftMs / 5, 0);    // <500ms is perfect
   const qualityScore = retentionPct * 0.5 + accuracyPct * 0.5;
 
+  if (weights.quality <= 0) {
+    // Avoid division by zero — use raw weighted sum instead
+    return Math.round((speedScore * 0.3 + ttftScore * 0.1 + qualityScore) * 10) / 10;
+  }
   return Math.round(
     (speedScore * 0.3 + ttftScore * 0.1 + qualityScore * weights.quality) / weights.quality * 10,
   ) / 10;
@@ -57,10 +61,11 @@ export async function recommendModel(
   }
 
    // Compute avg scores per model
-  const scored: Array<Recommendation & { details: Record<string, number> }> = [];
+   const scored: Array<Recommendation & { details: Record<string, number> }> = [];
 
-  for (const [model, runs] of models) {
-    const avgGenTps = runs.reduce((s, r) => s + (Number(r.speed_gen_tps) ?? 0), 0) / runs.length;
+   for (const [model, runs] of models) {
+   const avgPromptTps = runs.reduce((s, r) => s + (Number(r.speed_prompt_tps) ?? 0), 0) / runs.length;
+   const avgGenTps = runs.reduce((s, r) => s + (Number(r.speed_gen_tps) ?? 0), 0) / runs.length;
     const avgRetention = runs.reduce((s, r) => s + (Number(r.retention_pct) ?? 0), 0) / runs.length;
     const avgAccuracy = runs.reduce((s, r) => s + (Number(r.accuracy_pct) ?? 0), 0) / runs.length;
     const avgTtft = runs.reduce((s, r) => s + (Number(r.speed_ttft_ms) ?? 0), 0) / runs.length;
@@ -73,7 +78,7 @@ export async function recommendModel(
       default:        taskWeight = 0.4;             // reasoning needs retention
     }
 
-    const composite = computeComposite(avgGenTps / 10, avgGenTps, avgTtft, avgRetention, avgAccuracy);
+    const composite = computeComposite(avgPromptTps, avgGenTps, avgTtft, avgRetention, avgAccuracy);
 
     // Optional: filter by cost
     if (maxCost === 'low' && composite < 50) continue;

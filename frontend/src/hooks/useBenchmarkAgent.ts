@@ -1,9 +1,9 @@
 // src/hooks/useBenchmarkAgent.ts — React hooks for agent-oriented benchmark API
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { getApiUrl, get, post } from '../util/request.util';
 
 /* ------------------------------------------------------------------ */
-/*  Types                                                              */
+/*  Types                                                               */
 /* ------------------------------------------------------------------ */
 export interface BenchmarkScore {
   gen_tps: number;
@@ -18,7 +18,7 @@ export interface CompactRunResult {
     retention: number;
     accuracy: number;
     composite: number;
-  };
+   };
   recommendation: string;
 }
 
@@ -33,7 +33,7 @@ export interface RecentRun {
     retention_pct: number;
     accuracy_pct: number;
     composite: number;
-  };
+   };
 }
 
 export interface Recommendation {
@@ -51,54 +51,57 @@ export interface ScoreResponse {
     accuracy_pct: number;
     composite: number;
     weights: Record<string, number>;
-  };
+   };
 }
 
 export interface CompareResult extends RecentRun {}
 
 /* ------------------------------------------------------------------ */
-/*  Hooks                                                              */
+/*  Hooks                                                               */
 /* ------------------------------------------------------------------ */
-function useFetchState<T>(opts: { url: string } = { url: '' }) {
+function useFetchState<T>(url: string) {
   const [data, setData] = useState<T | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    if (!url) return;
     let cancelled = false;
-    (async () => {
+     (async () => {
       setLoading(true);
       try {
-        const res = await get(opts.url);
+        const res = await get(url);
         if (!cancelled) setData(res as T);
-      } catch (err) {
+       } catch (err) {
         if (!cancelled) setError(String(err));
-      } finally {
+       } finally {
         if (!cancelled) setLoading(false);
-       }
+         }
      })();
     return () => { cancelled = true; };
-   }, [opts.url]);
+  }, [url]); // url string만 dependency — stable reference
 
   return { data, loading, error };
 }
 
 /** Recent runs (compact, agent-friendly) */
 export function useBenchmarkRecent(limit = 10) {
-  const url = `${getApiUrl('/bench/recent')}?limit=${limit}`;
-  return useFetchState<{ count: number; runs: RecentRun[] }>({ url });
+  const url = useMemo(() => `${getApiUrl('/bench/recent')}?limit=${limit}`, [limit]);
+  return useFetchState<{ count: number; runs: RecentRun[] }>(url);
 }
 
 /** Task-based model recommendations */
 export function useModelRecommendation(task: 'coding' | 'math' | 'reasoning', maxCost?: string) {
-  const params = new URLSearchParams({ task });
-  if (maxCost) params.set('max_cost', maxCost);
-  const url = `${getApiUrl('/bench/recommend')}?${params}`;
-  return useFetchState<{ recommended: Recommendation[]; based_on: number }>({ url });
+  const url = useMemo(() => {
+    const params = new URLSearchParams({ task });
+    if (maxCost) params.set('max_cost', maxCost);
+   return `${getApiUrl('/bench/recommend')}?${params}`;
+  }, [task, maxCost]);
+  return useFetchState<{ recommended: Recommendation[]; based_on: number }>(url);
 }
 
 /* ------------------------------------------------------------------ */
-/*  Standalone async calls (not hooks)                                 */
+/*  Standalone async calls (not hooks)                                  */
 /* ------------------------------------------------------------------ */
 /** Run a compact benchmark (speed only, JSON response) */
 export async function runCompactBench(model: string): Promise<CompactRunResult> {
