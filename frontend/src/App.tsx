@@ -71,10 +71,10 @@ export default function App() {
             <Route path="/auth" element={<AuthPage />} />
             <Route path="/" element={<ProtectedRoute><Layout><HomePage /></Layout></ProtectedRoute>} />
             <Route path="/tasks" element={<ProtectedRoute><Layout><TasksPage /></Layout></ProtectedRoute>} />
-            <Route path="/bench" element={<BenchPage />} />
-            <Route path="/bench/history" element={<BenchHistoryPage />} />
-            <Route path="/bench/:runId" element={<BenchDetailWrapper />} />
-            <Route path="/results/:runId" element={<BenchDetailWrapper />} />
+            <Route path="/bench" element={<ProtectedRoute><Layout><BenchPage /></Layout></ProtectedRoute>} />
+            <Route path="/bench/history" element={<ProtectedRoute><Layout><BenchHistoryPage /></Layout></ProtectedRoute>} />
+            <Route path="/bench/:runId" element={<ProtectedRoute><Layout><BenchDetailWrapper /></Layout></ProtectedRoute>} />
+            <Route path="/results/:runId" element={<ProtectedRoute><Layout><BenchDetailWrapper /></Layout></ProtectedRoute>} />
           </Routes>
         </BrowserRouter>
       </AuthProvider>
