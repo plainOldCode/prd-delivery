@@ -13,7 +13,7 @@ export interface BenchRun {
   hardware: string;
   runtime: string;
   promptTps: number;
-  genTs: number;
+  genTps: number;
   ttftMs: number;
   retentionPct: number;
   accuracyPct: number;
@@ -30,7 +30,7 @@ export interface BenchTestRecord {
   details?: Record<string, unknown>;
 }
 
-/** List models from Ollama endpoint */
+/** List models from Olloma endpoint */
 export async function listModels(baseUrl = 'http://localhost:11434'): Promise<ModelInfo[]> {
   if (process.env.BENCH_MOCK === 'true') return stubModelList();
 
@@ -62,7 +62,7 @@ export async function listModelsMLX(baseUrl = 'http://localhost:8080'): Promise<
   }
 }
 
-/** Run speed benchmark — measure token throughput and TTFT using Ollama's exact metadata */
+/** Run speed benchmark — measure token throughput and TTFT using Olloma's high-precision metadata */
 export async function runSpeedBench(model: string, baseUrl = 'http://localhost:11434'): Promise<{ promptTps: number; genTps: number; ttftMs: number }> {
   if (process.env.BENCH_MOCK === 'true') {
     return { promptTps: 45.2, genTps: 12.8, ttftMs: 140 };
@@ -70,7 +70,7 @@ export async function runSpeedBench(model: string, baseUrl = 'http://localhost:1
 
   const testPrompt = 'Write a short poem about technology in exactly 50 words.';
 
-  // Change to stream: false for production-grade reliability and easy metadata access
+  // Change to stream: false for production-grade reliability and exact metadata extraction
   const resp = await fetch(`${baseUrl}/api/generate`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -81,25 +81,22 @@ export async function runSpeedBench(model: string, baseUrl = 'http://localhost:1
 
   const data = await resp.json() as any;
 
-  // Check if Ollama metadata is present to ensure reliability
+  // Verify specialized metadata presence for high-precision calculation
   if (typeof data.prompt_eval_count !== 'number' || typeof data.eval_duration !== 'number') {
-    throw new Error('Ollama response did not include required eval metadata for reliable measurement.');
+    throw new Error('Ollama response missing required engine metadata for high-precision measurement.');
   }
 
-  // Precision calculation using actual engine stats
-  // Prompt TPS: prompt_eval_count / (prompt_eval_duration / 1e9)
+  // Calculate metrics using exact nanosecond durations provided by Ollama engine
   const promptTps = data.prompt_eval_count > 0 
     ? (data.prompt_eval_count / (data.prompt_eval_duration / 1_000_000_000)) 
     : 0;
 
-  // Generation TPS: eval_count / (eval_duration / 1e9)
   const genTps = data.eval_count > 0 
     ? (data.eval_count / (data.eval_duration / 1_000_000_000)) 
     : 0;
 
-  // TTFT (Time To First Token) is commonly approximated by prompt_eval_duration in some contexts, 
-  // but here we'll use the total duration for simplicity or a specific slice if available.
-  const ttftMs = data.prompt_eval_duration / 1_000_000; // Approximate TTFT as end of prompt processing
+  // TTFT is approximated by prompt evaluation time transition into generation phase
+  const ttftMs = data.prompt_eval_duration / 1_000_000; 
 
   return { promptTps, genTps, ttftMs };
 }
@@ -132,7 +129,7 @@ export async function runRetentionBench(
       const query = 'What is the secret answer?';
 
       try {
-        const result = await queryModel(model, haystack + '\\n\\n' + query, baseUrl);
+        const result = await queryModel(model, haystack + '\n\n' + query, baseUrl);
         const passed = result.includes('SUPERWORD');
         tests.push({
           category: 'retention',
@@ -169,13 +166,13 @@ export async function runAccuracyBench(
 
   const questions: Array<{ question: string; answer: string; pattern: string }> = [
      { question: 'What is 25 * 17?', answer: '425', pattern: '425' },
-     { question: 'List the prime numbers between 1 and 20, separated by commas.', answer: '2,3,5,7,11,13,17,19', pattern: '\\b2\\b.*\\b3\\b.*\\b5\\b.*\\b7\\b.*\\b11\\b.*\\b13\\b.*\\b17\\b.*\\b19\\b' },
+     { question: 'List the prime numbers between 1 and 20, separated by commas.', answer: '2,3,5,7,11,13,17,19', pattern: '\b2\b.*\b3\b.*\b5\b.*\b7\b.*\b11\b.*\b13\b.*\b17\b.*\b19\b' },
      { question: 'What is the capital of France?', answer: 'Paris', pattern: 'Paris' },
      { question: 'How many letters are in the word \"supercalifragilisticexpialidocious\"?', answer: '34', pattern: '34' },
-     { question: 'Calculate: 9.81 * 45 + 27.3 = ? Give just the number.', answer: '467.85', pattern: '(?:467\\.?\\d*)' },
-     { question: 'What is the square root of 144?', answer: '12', pattern: '\\b12\\b' },
+     { question: 'Calculate: 9.81 * 45 + 27.3 = ? Give just the number.', answer: '467.85', pattern: '(?:467\.?\d*)' },
+     { question: 'What is the square root of 144?', answer: '12', pattern: '\b12\b' },
      { question: 'Name the planets between Earth and Saturn in order from the Sun.', answer: 'Mars, Jupiter', pattern: 'Mars.*Jupiter' },
-     { question: 'What is the chemical symbol for Gold?', answer: 'Au', pattern: '\\bAu\\b' },
+     { question: 'What is the chemical symbol for Gold?', answer: 'Au', pattern: '\bAu\b' },
      { question: 'Convert 100 Celsius to Fahrenheit.', answer: '212', pattern: '212' },
      { question: 'How many seconds are in a non-leap year?', answer: '31536000', pattern: '31536000' },
   ];
@@ -207,21 +204,25 @@ export async function runAccuracyBench(
 export async function saveBenchRun(run: BenchRun): Promise<number> {
   await db`BEGIN TRANSACTION`;
   try {
-    await db`INSERT INTO bench_runs (model_name, hardware, runtime, speed_prompt_tps, speed_gen_tps, speed_ttft_ms, retention_pct, accuracy_pct)\n      VALUES (${run.model}, ${run.hardware}, ${run.runtime}, ${run.promptTps}, ${run.genTps}, ${run.ttftMs}, ${run.retentionPct}, ${run.accuracyPct})`;
+    await db`INSERT INTO bench_runs (model_name, hardware, runtime, speed_prompt_tps, speed_gen_tps, speed_ttft_ms, retention_pct, accuracy_pct)
+      VALUES (${run.model}, ${run.hardware}, ${run.runtime}, ${run.promptTps}, ${run.genTps}, ${run.ttftMs}, ${run.retentionPct}, ${run.accuracyPct})`;
 
     const result = await db`SELECT last_insert_rowid() AS id`;
     const runId = (result as Array<{ id: number }>)[0].id;
 
     for (const test of run.retentionTests ?? []) {
-      await db`INSERT INTO bench_tests (run_id, category, name, passed, details)\n        VALUES (${runId}, ${test.category}, ${test.name}, ${test.passed ? 1 : 0}, ${JSON.stringify(test.details)})`;
+      await db`INSERT INTO bench_tests (run_id, category, name, passed, details)
+        VALUES (${runId}, ${test.category}, ${test.name}, ${test.passed ? 1 : 0}, ${JSON.stringify(test.details)})`;
      }
 
     for (const test of run.accuracyTests ?? []) {
-      await db`INSERT INTO bench_tests (run_id, category, name, passed, details)\n        VALUES (${runId}, ${test.category}, ${test.name}, ${test.passed ? 1 : 0}, ${JSON.stringify(test.details)})`;
+      await db`INSERT INTO bench_tests (run_id, category, name, passed, details)
+        VALUES (${runId}, ${test.category}, ${test.name}, ${test.passed ? 1 : 0}, ${JSON.stringify(test.details)})`;
      }
 
     for (const test of run.speedTests ?? []) {
-      await db`INSERT INTO bench_tests (run_id, category, name, passed, details)\n        VALUES (${runId}, ${test.category}, ${test.name}, ${1}, ${JSON.stringify(test.details)})`;
+      await db`INSERT INTO bench_tests (run_id, category, name, passed, details)
+        VALUES (${runId}, ${test.category}, ${test.name}, ${1}, ${JSON.stringify(test.details)})`;
      }
 
     await db`COMMIT`;
