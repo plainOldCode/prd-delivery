@@ -1,10 +1,9 @@
-// src/routes/bench-agent.ts — Agent-oriented benchmark API (JSON-only, no SSE)
+// src/routes/bench-agent.ts — Agent-oriented benchmark API (JSON-only, no auth required)
 import { Hono } from 'hono';
 import db from '../db/client';
 import { BenchRunRow } from '../db/types';
 import { stubModelList, runSpeedBench, listModels, saveBenchRun } from '../services/bench';
 import { computeComposite, recommendModel, compareRuns, CompositeWeights } from '../services/advisor';
-import { requireAuth } from './auth';
 import { sanitizeError } from '../middleware/error-handling';
 
 // ── Server-side URL allowlist (prevents SSRF) ──────────────────────────
@@ -34,16 +33,6 @@ type BenchScore = {
 	accuracy: number;
 	composite: number;
 };
-
-// ── All agent routes require auth ───────────────────────────────────────
-agent.use('*', async (c, next) => {
-	if (process.env.BENCH_MOCK === 'true') {
-		await next();
-		return;
-	}
-	const authRes = await requireAuth(c, next);
-	return authRes;
-});
 
 // GET /models/suitable?min_context=N&runtime=X — Filter models by context size
 agent.get('/models/suitable', async (c) => {

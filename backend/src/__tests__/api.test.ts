@@ -17,7 +17,7 @@ describe('API Smoke Tests', () => {
 
   it('GET / returns service info', async () => {
     const json: any = await (await get('/')).json();
-    expect(json.service).toBe('prd-delivery-backend');
+    expect(json.service).toBe('llm-bench');
    });
 
   it('GET /api/health returns ok', async () => {

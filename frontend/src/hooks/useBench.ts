@@ -77,7 +77,7 @@ export interface BenchDetail {
 }
 
 export interface SpeedDataPoint {
-	time: number;      // seconds elapsed
+	time: number;       // seconds elapsed
 	promptTps: number;
 	genTps: number;
 }
@@ -92,9 +92,9 @@ function useFetch<T>(fetcher: () => Promise<T>) {
 	useEffect(() => {
 		const controller = new AbortController();
 		fetcher()
-				.then((res) => { if (!controller.signal.aborted) setData(res as T); })
-				.catch((err: Error) => { if (!controller.signal.aborted && err.name !== 'AbortError') setError(err.message ?? 'Fetch failed'); })
-				.finally(() => { if (!controller.signal.aborted) setLoading(false); });
+			.then((res) => { if (!controller.signal.aborted) setData(res as T); })
+			.catch((err: Error) => { if (!controller.signal.aborted && err.name !== 'AbortError') setError(err.message ?? 'Fetch failed'); })
+			.finally(() => { if (!controller.signal.aborted) setLoading(false); });
 		return () => controller.abort();
 	}, []);
 
@@ -104,12 +104,12 @@ function useFetch<T>(fetcher: () => Promise<T>) {
 		try {
 			const result = await fetcher();
 			setData(result as T);
-				} catch (err: unknown) {
-				const e = err instanceof Error ? err : new Error('Fetch failed');
-				if (e.name !== 'AbortError') setError(e.message ?? 'Fetch failed');
-				} finally {
-				setLoading(false);
-			}
+		} catch (err: unknown) {
+			const e = err instanceof Error ? err : new Error('Fetch failed');
+			if (e.name !== 'AbortError') setError(e.message ?? 'Fetch failed');
+		} finally {
+			setLoading(false);
+		}
 	}, [fetcher]);
 
 	return { data, loading, error, refetch } as const;
@@ -154,15 +154,9 @@ export function useRunBenchmark() {
 		setSpeedData([]);
 
 		try {
-			 // In-house fetch to handle SSE stream since our request.util doesn't support streams yet
-			const token = localStorage.getItem('auth_token');
-
 			const response = await fetch(getApiUrl('/api/bench/run'), {
 				method: 'POST',
-				headers: {
-					 'Content-Type': 'application/json',
-				 ...(token ? { Authorization: `Bearer ${token}` } : {}),
-				},
+				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify({ model }),
 			 });
 
@@ -193,10 +187,9 @@ export function useRunBenchmark() {
 						if (event === 'progress') {
 							setProgress({ message: payload.message, percent: payload.percent });
 
-								// Track speed data points during streaming
+							// Track speed data points during streaming
 							const elapsed = (Date.now() - startTime) / 1000;
 							if (payload.percent >= 40 && payload.percent < 70) {
-									// During speed test phase, extract speed metrics if available
 								const speedDataPoint: SpeedDataPoint = {
 									time: elapsed,
 									promptTps: payload.speed?.promptTps || 0,
@@ -211,12 +204,12 @@ export function useRunBenchmark() {
 								time: (Date.now() - startTime) / 1000,
 								promptTps: payload.speed?.promptTps || 0,
 								genTps: payload.speed?.genTps || 0,
-								};
+							};
 							setSpeedData(prev => [...prev, finalSpeedDataPoint]);
 						} else if (event === 'error') {
 							throw new Error(payload.message);
 						}
-				 } catch (e: unknown) {
+					 } catch (e: unknown) {
 						const err = e instanceof Error ? e : new Error('Parse error');
 						console.error('SSE parse error', err, dataStr);
 					 }

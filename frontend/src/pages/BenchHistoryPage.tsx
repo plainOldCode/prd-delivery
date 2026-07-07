@@ -130,7 +130,7 @@ function BenchDetailPage({ runId }: { runId: number }) {
        </header>
        <main className="max-w-3xl mx-auto p-6 space-y-4">
          <div className="bg-neutral-900 rounded-xl border border-neutral-800 p-5 space-y-2">
-           <h2 className="text-lg font-bold text-white">{run.model}</h2>
+           <h2 data-testid="bench-detail-heading" className="text-lg font-bold text-white">{run.model}</h2>
            <p className="text-sm text-gray-500">{run.hardware ?? '-'} · {date} · {run.runtime ?? '-'}</p>
 
            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mt-4">
