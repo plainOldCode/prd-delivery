@@ -1,21 +1,16 @@
 // src/routes/bench-agent.ts — Agent-oriented benchmark API (JSON-only, no SSE)
 import { Hono } from 'hono';
 import db from '../db/client';
+import { BenchRunRow } from '../db/types';
 import { stubModelList, runSpeedBench, listModels, saveBenchRun } from '../services/bench';
 import { computeComposite, recommendModel, compareRuns, CompositeWeights } from '../services/advisor';
 import { requireAuth } from './auth';
+import { sanitizeError } from '../middleware/error-handling';
 
 // ── Server-side URL allowlist (prevents SSRF) ──────────────────────────
 const ALLOWED_BASE_URLS = new Set((process.env.BENCH_ALLOWED_URLS ?? '').split(',').filter(Boolean));
 if (ALLOWED_BASE_URLS.size === 0) {
 	ALLOWED_BASE_URLS.add('http://localhost:11434');
-}
-
-// ── Shared helpers ──────────────────────────────────────────────────────
-function sanitizeError(err: unknown): string {
-	if (typeof err === 'string') return err.split('\n')[0];
-	if (err instanceof Error) return err.message;
-	return 'Benchmark failed';
 }
 
 // Rate-limiter tracker (simple in-memory sliding window per IP)
@@ -96,9 +91,7 @@ agent.post('/bench/run/compact', async (c) => {
 			promptTps: speedResult.promptTps, genTps: speedResult.genTps, ttftMs: speedResult.ttftMs,
 			retentionPct: 0, accuracyPct: 0,
 		});
-		const composite = computeComposite(
-				speedResult.genTps, speedResult.ttftMs, 0, 0,
-			);
+		const composite = computeComposite(speedResult.genTps, speedResult.ttftMs, 0, 0);
 		const score: BenchScore = {
 			speed: { gen_tps: speedResult.genTps, ttft_ms: speedResult.ttftMs },
 			retention: 0, accuracy: 0, composite,
@@ -114,28 +107,21 @@ agent.post('/bench/run/compact', async (c) => {
 agent.get('/bench/recent', async (c) => {
 	const limit = Math.min(parseInt(c.req.query('limit') || '10', 10), 50);
 	try {
-		const rows = await db`SELECT *, rowid as id FROM bench_runs ORDER BY created_at DESC LIMIT ${limit}`;
-		const runs: Array<Record<string, unknown>> = (rows as any) || [];
+		const rows: BenchRunRow[] = await db`SELECT *, rowid as id FROM bench_runs ORDER BY created_at DESC LIMIT ${limit}`;
 		return c.json({
-			count: runs.length,
-			runs: runs.map((r: Record<string, unknown>) => {
-				const composite = computeComposite(
-					Number(r.speed_gen_tps), Number(r.speed_ttft_ms),
-					Number(r.retention_pct), Number(r.accuracy_pct),
-					);
-				return {
-					id: r.id, model: r.model_name, hardware: r.hardware, runtime: r.runtime, created_at: r.created_at,
-					score: {
-						speed: { gen_tps: r.speed_gen_tps, ttft_ms: r.speed_ttft_ms },
-						retention_pct: r.retention_pct, accuracy_pct: r.accuracy_pct,
-						composite,
-					},
-				};
-			}),
+			count: rows.length,
+			runs: rows.map((row) => ({
+				id: row.id, model: row.model_name, hardware: row.hardware, runtime: row.runtime, created_at: row.created_at,
+				score: {
+					speed: { gen_tps: row.speed_gen_tps, ttft_ms: row.speed_ttft_ms },
+					retention_pct: row.retention_pct, accuracy_pct: row.accuracy_pct,
+					composite: computeComposite(row.speed_gen_tps, row.speed_ttft_ms, row.retention_pct, row.accuracy_pct),
+				},
+			})),
 		});
 	} catch (err) {
 		console.error({ err }, 'Failed to fetch recent runs');
-		return c.json({ count: 0, error: sanitizeError(err), runs: [] as any[] }, 500);
+		return c.json({ count: 0, error: sanitizeError(err), runs: [] }, 500);
 	}
 });
 
@@ -147,7 +133,7 @@ agent.get('/bench/recommend', async (c) => {
 		return c.json({ error: 'task required: coding|math|reasoning' }, 400);
 	}
 	try {
-		const recs = await recommendModel(task as any, maxCost);
+		const recs = await recommendModel(task, maxCost);
 		return c.json({ recommended: recs, based_on: recs.length });
 	} catch (err) {
 		console.error({ err }, 'Recommendation failed');
@@ -162,18 +148,14 @@ agent.post('/bench/score', async (c) => {
 	if (!runId || isNaN(runId)) return c.json({ error: 'runId is required' }, 400);
 
 	try {
-		const rows = await db`SELECT *, rowid as id FROM bench_runs WHERE rowid = ${runId} LIMIT 1`;
-		const run = ((rows as any) || [])[0] as Record<string, unknown>;
+		const rows: BenchRunRow[] = await db`SELECT *, rowid as id FROM bench_runs WHERE rowid = ${runId} LIMIT 1`;
+		const run = rows[0];
 		if (!run) return c.json({ error: 'Run not found' }, 404);
 
-		const weights = body.speedWeight != null || body.qualityWeight != null 
+		const weights = body.speedWeight != null || body.qualityWeight != null
 				? { speed: body.speedWeight ?? 0.4, quality: body.qualityWeight ?? 0.6 }
 				: undefined;
-		const composite = computeComposite(
-			Number(run.speed_gen_tps), Number(run.speed_ttft_ms),
-			Number(run.retention_pct), Number(run.accuracy_pct),
-			weights as CompositeWeights | undefined,
-			);
+		const composite = computeComposite(run.speed_gen_tps, run.speed_ttft_ms, run.retention_pct, run.accuracy_pct, weights);
 		return c.json({
 			runId: run.id, model: run.model_name,
 			score: {
@@ -191,8 +173,8 @@ agent.post('/bench/score', async (c) => {
 // POST /bench/compare — Batch compare multiple runs by ID
 agent.post('/bench/compare', async (c) => {
 	const body = await c.req.json();
-	const ids = body.ids as number[];
-	if (!ids || !Array.isArray(ids)) return c.json({ error: 'ids (number[]) is required' }, 400);
+	const ids = Array.isArray(body.ids) ? body.ids as number[] : [];
+	if (!ids.length) return c.json({ error: 'ids (number[]) is required' }, 400);
 
 	try {
 		const results = await compareRuns(ids);
