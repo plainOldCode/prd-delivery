@@ -1,9 +1,9 @@
 // src/hooks/useBenchmarkAgent.ts — React hooks for agent-oriented benchmark API
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { get, post } from '../util/request.util';
+import { BENCH_API_BASE } from '../api/benchPaths';
 
 /* ------------------------------------------------------------------ */
-/*  Types                                                                */
+/*  Types                                                               */
 /* ------------------------------------------------------------------ */
 export interface BenchmarkScore {
 	gen_tps: number;
@@ -57,7 +57,7 @@ export interface ScoreResponse {
 export interface CompareResult extends RecentRun {}
 
 /* ------------------------------------------------------------------ */
-/*  Generic fetch hook with Abort + refetch                              */
+/*  Generic fetch state                                              */
 /* ------------------------------------------------------------------ */
 function useFetchState<T>(url: string) {
 	const [data, setData] = useState<T | null>(null);
@@ -76,7 +76,7 @@ function useFetchState<T>(url: string) {
 			})
 			.finally(() => setLoading(false));
 
-		return () => abortController.abort();
+		return ()() => abortController.abort(); // eslint-disable-line @typescript-eslint/no-unused-expressions
 	}, [url]);
 
 	useEffect(() => {
@@ -104,11 +104,11 @@ function useFetchState<T>(url: string) {
 }
 
 /* ------------------------------------------------------------------ */
-/*  Hooks                                                                */
+/*  Hooks                                                             */
 /* ------------------------------------------------------------------ */
 /** Recent runs (compact, agent-friendly) */
 export function useBenchmarkRecent(limit = 10) {
-	const url = useMemo(() => `/bench/recent?limit=${limit}`, [limit]);
+	const url = useMemo(() => `${BENCH_API_BASE}/recent?limit=${limit}`, [limit]);
 	return useFetchState<{ count: number; runs: RecentRun[] }>(url);
 }
 
@@ -117,17 +117,17 @@ export function useModelRecommendation(task: 'coding' | 'math' | 'reasoning', ma
 	const url = useMemo(() => {
 		const params = new URLSearchParams({ task });
 		if (maxCost) params.set('max_cost', maxCost);
-		return `/bench/recommend?${params}`;
+		return `${BENCH_API_BASE}/recommend?${params}`;
 	}, [task, maxCost]);
 	return useFetchState<{ recommended: Recommendation[]; based_on: number }>(url);
 }
 
 /* ------------------------------------------------------------------ */
-/*  Standalone async calls (not hooks)                                   */
+/*  Standalone async calls (not hooks)                                */
 /* ------------------------------------------------------------------ */
 /** Run a compact benchmark (speed only, JSON response) */
 export async function runCompactBench(model: string, signal?: AbortSignal): Promise<CompactRunResult> {
-	return post('/bench/run/compact', { model }, { signal });
+	return post(`${BENCH_API_BASE}/run/compact`, { model }, { signal });
 }
 
 /** Compute composite score with optional custom weights */
@@ -136,10 +136,10 @@ export async function computeScore(
 	weights?: { speedWeight?: number; qualityWeight?: number },
 	signal?: AbortSignal,
 ): Promise<ScoreResponse> {
-	return post('/bench/score', { runId, ...weights }, { signal });
+	return post(`${BENCH_API_BASE}/score`, { runId, ...weights }, { signal });
 }
 
 /** Compare multiple runs by ID */
 export async function compareRuns(ids: number[], signal?: AbortSignal): Promise<{ count: number; compared: string; results: CompareResult[] }> {
-	return post('/bench/compare', { ids }, { signal });
+	return post(`${BENCH_API_BASE}/compare`, { ids }, { signal });
 }

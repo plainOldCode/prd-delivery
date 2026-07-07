@@ -13,7 +13,7 @@ export interface BenchRun {
   hardware: string;
   runtime: string;
   promptTps: number;
-  genTps: number;
+  genTs: number;
   ttftMs: number;
   retentionPct: number;
   accuracyPct: number;
@@ -44,7 +44,7 @@ export async function listModels(baseUrl = 'http://localhost:11434'): Promise<Mo
       digest: m.digest,
     }));
   } catch {
-    return []; // Ollama not running — return empty
+    return []; // Olloma not running — return empty
   }
 }
 
@@ -62,7 +62,7 @@ export async function listModelsMLX(baseUrl = 'http://localhost:8080'): Promise<
   }
 }
 
-/** Run speed benchmark — measure token throughput and TTFT */
+/** Run speed benchmark — measure token throughput and TTFT using Ollama's exact metadata */
 export async function runSpeedBench(model: string, baseUrl = 'http://localhost:11434'): Promise<{ promptTps: number; genTps: number; ttftMs: number }> {
   if (process.env.BENCH_MOCK === 'true') {
     return { promptTps: 45.2, genTps: 12.8, ttftMs: 140 };
@@ -70,41 +70,36 @@ export async function runSpeedBench(model: string, baseUrl = 'http://localhost:1
 
   const testPrompt = 'Write a short poem about technology in exactly 50 words.';
 
-  const startTime = Date.now();
-  let ttsCount = 0;
-
+  // Change to stream: false for production-grade reliability and easy metadata access
   const resp = await fetch(`${baseUrl}/api/generate`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ model, prompt: testPrompt, stream: true, options: { num_predict: 128 } }),
+    body: JSON.stringify({ model, prompt: testPrompt, stream: false, options: { num_predict: 128 } }),
   });
 
-  const ttftMs = Date.now() - startTime; // Rough TTFT estimate
   if (!resp.ok) throw new Error(`Model endpoint error: ${resp.status}`);
 
-  let fullText = '';
-  try {
-    const reader = resp.body?.getReader?.();
-    if (reader) {
-      const decoder = new TextDecoder();
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        const chunk = decoder.decode(value);
-        fullText += chunk;
-        const tokens = chunk.match(/\"token\"\s*:\s*\"[^\"]*\"/g);
-        if (tokens) ttsCount += tokens.length;
-      }
-    }
-  } catch {
-    fullText = await resp.text?.() ?? '';
-    ttsCount = Math.ceil(fullText.length / 4);
+  const data = await resp.json() as any;
+
+  // Check if Ollama metadata is present to ensure reliability
+  if (typeof data.prompt_eval_count !== 'number' || typeof data.eval_duration !== 'number') {
+    throw new Error('Ollama response did not include required eval metadata for reliable measurement.');
   }
 
-  const totalMs = Date.now() - startTime;
-  const genTps = ttsCount > 0 ? (ttsCount / totalMs) * 1000 : 0;
-  const promptLen = testPrompt.split(/\\s+/).length;
-  const promptTps = ttftMs > 0 ? (promptLen / ttftMs) * 1000 : 0;
+  // Precision calculation using actual engine stats
+  // Prompt TPS: prompt_eval_count / (prompt_eval_duration / 1e9)
+  const promptTps = data.prompt_eval_count > 0 
+    ? (data.prompt_eval_count / (data.prompt_eval_duration / 1_000_000_000)) 
+    : 0;
+
+  // Generation TPS: eval_count / (eval_duration / 1e9)
+  const genTps = data.eval_count > 0 
+    ? (data.eval_count / (data.eval_duration / 1_000_000_000)) 
+    : 0;
+
+  // TTFT (Time To First Token) is commonly approximated by prompt_eval_duration in some contexts, 
+  // but here we'll use the total duration for simplicity or a specific slice if available.
+  const ttftMs = data.prompt_eval_duration / 1_000_000; // Approximate TTFT as end of prompt processing
 
   return { promptTps, genTps, ttftMs };
 }
@@ -168,7 +163,7 @@ export async function runAccuracyBench(
       details: [
         { category: 'accuracy', name: 'What is 25 * 17?', passed: true, details: { expected: '425', response: '425' } },
         { category: 'accuracy', name: 'Capital of France', passed: true, details: { expected: 'Paris', response: 'Paris' } },
-      ]
+      ] 
     };
   }
 
@@ -197,7 +192,7 @@ export async function runAccuracyBench(
         name: q.question.substring(0, 30),
         passed,
         details: { expected: q.answer, response: result.substring(0, 200) },
-      });
+       });
       if (passed) passedCount++;
     } catch {
       tests.push({ category: 'accuracy', name: q.question.substring(0, 30), passed: false, details: { error: true } });
@@ -212,25 +207,21 @@ export async function runAccuracyBench(
 export async function saveBenchRun(run: BenchRun): Promise<number> {
   await db`BEGIN TRANSACTION`;
   try {
-    await db`INSERT INTO bench_runs (model_name, hardware, runtime, speed_prompt_tps, speed_gen_tps, speed_ttft_ms, retention_pct, accuracy_pct)
-      VALUES (${run.model}, ${run.hardware}, ${run.runtime}, ${run.promptTps}, ${run.genTps}, ${run.ttftMs}, ${run.retentionPct}, ${run.accuracyPct})`;
+    await db`INSERT INTO bench_runs (model_name, hardware, runtime, speed_prompt_tps, speed_gen_tps, speed_ttft_ms, retention_pct, accuracy_pct)\n      VALUES (${run.model}, ${run.hardware}, ${run.runtime}, ${run.promptTps}, ${run.genTps}, ${run.ttftMs}, ${run.retentionPct}, ${run.accuracyPct})`;
 
     const result = await db`SELECT last_insert_rowid() AS id`;
     const runId = (result as Array<{ id: number }>)[0].id;
 
     for (const test of run.retentionTests ?? []) {
-      await db`INSERT INTO bench_tests (run_id, category, name, passed, details)
-        VALUES (${runId}, ${test.category}, ${test.name}, ${test.passed ? 1 : 0}, ${JSON.stringify(test.details)})`;
+      await db`INSERT INTO bench_tests (run_id, category, name, passed, details)\n        VALUES (${runId}, ${test.category}, ${test.name}, ${test.passed ? 1 : 0}, ${JSON.stringify(test.details)})`;
      }
 
     for (const test of run.accuracyTests ?? []) {
-      await db`INSERT INTO bench_tests (run_id, category, name, passed, details)
-        VALUES (${runId}, ${test.category}, ${test.name}, ${test.passed ? 1 : 0}, ${JSON.stringify(test.details)})`;
+      await db`INSERT INTO bench_tests (run_id, category, name, passed, details)\n        VALUES (${runId}, ${test.category}, ${test.name}, ${test.passed ? 1 : 0}, ${JSON.stringify(test.details)})`;
      }
 
     for (const test of run.speedTests ?? []) {
-      await db`INSERT INTO bench_tests (run_id, category, name, passed, details)
-        VALUES (${runId}, ${test.category}, ${test.name}, ${1}, ${JSON.stringify(test.details)})`;
+      await db`INSERT INTO bench_tests (run_id, category, name, passed, details)\n        VALUES (${runId}, ${test.category}, ${test.name}, ${1}, ${JSON.stringify(test.details)})`;
      }
 
     await db`COMMIT`;
