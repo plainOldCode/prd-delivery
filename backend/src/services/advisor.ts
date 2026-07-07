@@ -21,27 +21,39 @@ export interface CompareRow {
   created_at: string;
 }
 
-/** Composite score calculation */
-export function computeComposite(
-  promptTps: number,
-  genTps: number,
-  ttftMs: number,
-  retentionPct: number,
-  accuracyPct: number,
-  weights = { speed: 0.4, quality: 0.6 },
-): number {
-  // Normalize each metric to 0-100 range
-  const speedScore = Math.min(genTps * 5, 100);       // gen_tps 20+ saturates
-  const ttftScore = Math.max(100 - ttftMs / 5, 0);    // <500ms is perfect
-  const qualityScore = retentionPct * 0.5 + accuracyPct * 0.5;
+export interface CompositeWeights {
+	speed: number;
+	quality: number;
+}
 
-  if (weights.quality <= 0) {
-    // Avoid division by zero — use raw weighted sum instead
-    return Math.round((speedScore * 0.3 + ttftScore * 0.1 + qualityScore) * 10) / 10;
-  }
-  return Math.round(
-    (speedScore * 0.3 + ttftScore * 0.1 + qualityScore * weights.quality) / weights.quality * 10,
-  ) / 10;
+/** Clamp value to [0, 100] */
+function clamp(n: number): number {
+	return Math.max(0, Math.min(100, n));
+}
+
+/** Composite score calculation (normalized 0–100) */
+export function computeComposite(
+	genTps: number,
+	ttftMs: number,
+	retentionPct: number,
+	accuracyPct: number,
+	weights?: CompositeWeights,
+): number {
+	const w = { speed: 0.4, quality: 0.6, ...weights };
+	const totalWeight = w.speed + w.quality || 0.001; // Prevent division by zero
+
+	// Normalize each metric to 0-100 range
+	const performanceScore = clamp(genTps * 5);
+	const latencyScore = clamp(100 - ttftMs / 10);
+	const qualityScore = clamp(retentionPct * 0.5 + accuracyPct * 0.5);
+
+	const composite = (
+		performanceScore * w.speed +
+		latencyScore * (w.speed / 3) +
+		qualityScore * w.quality
+	) / totalWeight;
+
+	return Math.round(clamp(composite) * 10) / 10;
 }
 
 /** Recommendation based on task type */
@@ -78,7 +90,7 @@ export async function recommendModel(
       default:        taskWeight = 0.4;             // reasoning needs retention
     }
 
-    const composite = computeComposite(avgPromptTps, avgGenTps, avgTtft, avgRetention, avgAccuracy);
+    const composite = computeComposite(avgGenTps, avgTtft, avgRetention, avgAccuracy);
 
     // Optional: filter by cost
     if (maxCost === 'low' && composite < 50) continue;

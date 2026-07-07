@@ -7,7 +7,8 @@ import { serve } from 'bun';
 const app = new Hono();
 
 // Global middleware
-app.use('*', cors());
+const allowedOrigins = (process.env.CORS_ORIGINS ?? 'http://localhost:3000').split(',');
+app.use('*', cors({ origin: allowedOrigins }));
 app.use('*', logger());
 
 // Root endpoint

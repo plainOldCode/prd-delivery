@@ -3,9 +3,14 @@
 import { SignJWT, jwtVerify } from 'jose';
 import type { JWTPayload } from 'jose';
 
-const JWT_SECRET = new TextEncoder().encode(
-  process.env.JWT_SECRET ?? 'change-me-in-production',
-);
+const rawSecret = process.env.JWT_SECRET;
+if (!rawSecret) {
+	throw new Error(
+		'JWT_SECRET environment variable is required. ' +
+			'Set it to a cryptographically random value (e.g. openssl rand -hex 32).',
+	);
+}
+const JWT_SECRET = new TextEncoder().encode(rawSecret);
 
 const ITERATIONS = 100_000;
 const HASH_LENGTH = 64; // 512 bits → 64 bytes of SHA-256 output

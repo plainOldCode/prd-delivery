@@ -8,7 +8,7 @@ export interface ModelInfo {
 }
 
 export interface BenchRun {
-  runId: number;
+  runId: number | string;
   model: string;
   hardware: string;
   runtime: string;
