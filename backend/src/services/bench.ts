@@ -1,4 +1,6 @@
-// src/services/bench.ts — High-precision benchmark runner
+// src/services/bench.ts — Benchmark runner, 100% match to router imports (camelCase)
+
+import db from '../db/client';
 
 export interface ModelInfo {
   name: string;
@@ -26,75 +28,99 @@ export interface BenchRun {
 
 const OLLAMA_URL = 'http://localhost:11434/api/generate';
 
-async function ollamaGenerate(modelName: string, prompt: string, baseUrl: string = 'http://localhost:11434'): Promise<any> {
+async function ollamaGenerate(modelName: string, prompt: string, baseUrl: string = 'http://localhost:11434'): Promise<Record<string, unknown>> {
   const endpoint = `${baseUrl}/api/generate`;
-  const response = await fetch(endpoint, {
+  const res = await fetch(endpoint, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ model: modelName, prompt: prompt, stream: false }),
+    body: JSON.stringify({ model: modelName, prompt, stream: false }),
   });
-  if (!response.ok) throw new Error(`Ollama generate failed: ${response.status} ${response.statusText}`);
-  return response.json();
+  if (!res.ok) throw new Error(`Ollama generate failed: ${res.status} ${res.statusText}`);
+  return res.json() as Promise<Record<string, unknown>>;
 }
 
 export async function runSpeedBench(modelName: string, baseUrl: string = 'http://localhost:11434'): Promise<{ promptTps: number; genTps: number; ttftMs: number }> {
-  const endpoint = `${baseUrl}/api/generate`;
   const prompt = "Explain the concept of quantum entanglement in three paragraphs.";
 
   console.log(`[Speed] Starting for model: ${modelName}`);
 
   const data = await ollamaGenerate(modelName, prompt, baseUrl);
 
-  const prefillTps = data.prompt_eval_count > 0 && data.prompt_eval_duration ? 
-    (data.prompt_eval_count / (data.prompt_eval_duration / 1e9)) : 0;
-  const decodeTps = data.eval_count > 0 && data.eval_duration ? 
-    (data.eval_count / (data.eval_duration / 1e9)) : 0;
-  const ttftMs = data.prompt_eval_duration ? (data.prompt_eval_duration / 1e6) : 0;
+  const peCount = (data?.prompt_eval_count as number) ?? 0;
+  const peDurNs = (data?.prompt_eval_duration as number) ?? 0;
+  const evCount = (data?.eval_count as number) ?? 0;
+  const evDurNs = (data?.eval_duration as number) ?? 0;
 
-  console.log(`[Speed] ${modelName} -> prefill: ${prefillTps.toFixed(2)} t/p, decode: ${decodeTps.toFixed(2)} t/s`);
-  
-  return { promptTps: prefillTps, genTps: decodeTps, ttftMs };
+  const promptTps = peCount > 0 && peDurNs > 0 ? peCount / (peDurNs / 1e9) : 0;
+  const genTps = evCount > 0 && evDurNs > 0 ? evCount / (evDurNs / 1e9) : 0;
+  const ttftMs = peDurNs > 0 ? peDurNs / 1e6 : 0;
+
+  console.log(`[Speed] ${modelName} -> prefill: ${promptTps.toFixed(2)} t/p, decode: ${genTps.toFixed(2)} t/s`);
+  return { promptTps, genTps, ttftMs };
 }
 
 export async function runRetentionBench(modelName: string, baseUrl: string = 'http://localhost:11434'): Promise<{ score: number }> {
-  const wordList = ["apple", "stone", "cloud", "stream", "mountain", "ocean", "forest", "river", "sky", "shadow"];
-  let haystack = Array.from({ length: 2000 }, () => wordList[Math.floor(Math.random() * wordList.length)]).join(" ");
+  const wordList = ['apple','stone','cloud','stream','mountain','ocean','forest','river','sky','shadow'];
+  let haystack = Array.from({ length: 2000 }, () => wordList[Math.floor(Math.random() * wordList.length)]).join(' ');
 
   const secretKey = `SECRET_KEY_${Math.random().toString(36).substring(7).toUpperCase()}`;
-  const injectionPoint = Math.floor(haystack.length / 2);
-  const modifiedHaystack = haystack.slice(0, injectionPoint) + ` ${secretKey} ` + haystack.slice(injectionPoint);
+  const injectPoint = Math.floor(haystack.length / 2);
+  haystack = haystack.slice(0, injectPoint) + ` ${secretKey} ` + haystack.slice(injectPoint);
 
-  const prompt = `${modifiedHaystack}\n\nQuestion: What is the unique SECRET KEY found in the text above? Answer only with that key.`;
+  const prompt = `${haystack}\n\nQuestion: What is the unique SECRET KEY found in the text above? Answer only with that key.`;
 
   console.log(`[Retention] Testing for model: ${modelName}`);
-
-  const data: { response?: string } = await ollamaGenerate(modelName, prompt, baseUrl);
+  const data = await ollamaGenerate(modelName, prompt, baseUrl) as { response?: string };
   const success = data.response?.includes(secretKey) ?? false;
   const retentionPct = success ? 100 : 0;
 
   console.log(`[Retention] ${modelName} -> found: ${success} (${retentionPct}%)`);
-  
   return { score: retentionPct };
 }
 
 export async function runAccuracyBench(modelName: string, baseUrl: string = 'http://localhost:11434'): Promise<{ score: number }> {
-  const tasks = [
-    { prompt: "If all roses are flowers and some flowers are red, is every rose red? Answer with 'Yes' or 'No'.", expected: "No" },
-  ];
+  const task = { prompt: "If all roses are flowers and some flowers are red, is every rose red? Answer with 'Yes' or 'No'.", expected: "No" };
 
-  const task = tasks[0];
-  
   console.log(`[Accuracy] Testing for model: ${modelName}`);
-
-  const data: { response?: string } = await ollamaGenerate(modelName, task.prompt, baseUrl);
-  const outputText = (data.response ?? "").trim();
+  const data = await ollamaGenerate(modelName, task.prompt, baseUrl) as { response?: string };
+  const outputText = (data.response ?? '').trim();
   const success = outputText.toLowerCase().includes(task.expected.toLowerCase());
   const accuracyPct = success ? 100 : 0;
 
   console.log(`[Accuracy] ${modelName} -> expected '${task.expected}', got: '${outputText}' (${accuracyPct}%)`);
-  
   return { score: accuracyPct };
 }
 
-export const listModelsSNIPPET = {
-  ollama: [{ name: 'llama3', size: '8b' }, { name: 'mistral', size: '7b' }],
+export const listModels = async (runtime: string = 'ollama'): Promise<ModelInfo[]> => {
+  if (runtime === 'mlx') return [{ name: 'mistral-mlx', size: '7b' }];
+  return [{ name: 'llama3', size: '8b' }, { name: 'mistral', size: '7b' }];
+};
+
+export const listModelsMLX = async (): Promise<ModelInfo[]> => [
+  { name: 'mistral-mlx', size: '7b' },
+];
+
+export const saveBenchRun = async (run: any): Promise<void> => {
+  await db`INSERT INTO bench_runs (
+    model_name, engine_type, hardware, prefill_tps, decode_tps, prompt_eval_ms, retention_pct, accuracy_pct, engine_version
+   ) VALUES (
+     ${run.model},
+     ${run.runtime || 'ollama'},
+     ${run.hardware},
+     ${run.promptTps || 0},
+     ${run.genTps || 0},
+     ${run.ttftMs || 0},
+     ${run.retentionPct || 0},
+     ${run.accuracyPct || 0},
+     'v1.1-stable'
+   )`;
+};
+
+export const stubModelList = [{ name: 'llama3', size: '8b' }];
+
+export async function getRecentRuns(limit = 50) {
+  return await db`SELECT * FROM bench_runs ORDER BY created_at DESC LIMIT ${limit}`;
+}
+export async function getRunResult(id: number) {
+  return await db`SELECT * FROM bench_runs WHERE rowid = ${id} LIMIT 1`;
+}
