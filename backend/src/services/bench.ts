@@ -14,18 +14,6 @@ export interface BenchmarkScore {
   promptEvalMs: number;
 }
 
-export interface BenchRun {
-  runId: string;
-  model: string;
-  hardware: string;
-  runtime: string;
-  promptTps: number;
-  genTps: number;
-  ttftMs: number;
-  retentionPct: number;
-  accuracyPct: number;
-}
-
 const OLLAMA_URL = 'http://localhost:11434/api/generate';
 
 async function ollamaGenerate(modelName: string, prompt: string, baseUrl: string = 'http://localhost:11434'): Promise<Record<string, unknown>> {
