@@ -116,7 +116,12 @@ export const saveBenchRun = async (run: any): Promise<void> => {
    )`;
 };
 
-export const stubModelList = [{ name: 'llama3', size: '8b' }];
+export function stubModelList(): ModelInfo[] {
+  return [
+    { name: 'llama3', size: '8b' },
+    { name: 'qwen3.5', size: '0.6b' }
+  ];
+}
 
 export async function getRecentRuns(limit = 50) {
   return await db`SELECT * FROM bench_runs ORDER BY created_at DESC LIMIT ${limit}`;
