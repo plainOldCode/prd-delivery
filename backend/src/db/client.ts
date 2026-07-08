@@ -11,6 +11,7 @@ if (url.startsWith('file://') || url === 'file::memory:') {
 const db = new SQL(connectionString);
 
 export async function initDb() {
+  // Core table for sample tasks (legacy)
   await db`CREATE TABLE IF NOT EXISTS sample_task (
     id             INTEGER PRIMARY KEY AUTOINCREMENT,
     title          TEXT NOT NULL,
@@ -23,27 +24,28 @@ export async function initDb() {
     owner_name      TEXT
         )`;
 
- // Benchmark tables — LLM Bench Dashboard
+  // Refined Benchmark tables following GPT-5.5's high-precision feedback
   await db`CREATE TABLE IF NOT EXISTS bench_runs (
-    id               INTEGER PRIMARY KEY AUTOINCREMENT,
+    id               INTEGER PRIMARY KEY AUTO-INCREMENT,
     model_name       TEXT NOT NULL,
-    hardware         TEXT,
-    runtime          TEXT,
-    speed_prompt_tps REAL NOT NULL DEFAULT 0,
-    speed_gen_tps    REAL NOT NULL DEFAULT 0,
-    speed_ttft_ms    REAL NOT NULL DEFAULT 0,
-    retention_pct    REAL NOT NULL DEFAULT 0,
-    accuracy_pct     REAL NOT NULL DEFAULT 0,
+    engine_type      TEXT,           -- e.g., 'ollama', 'mlx'
+    hardware_info    TEXT,           -- hardware details for reproducibility
+    prefill_tps      REAL,           -- Prompt throughput (tokens/s) - Nullable for precision handling
+    decode_tps       REAL,           -- Generation throughput (tokens/s)
+    prompt_eval_ms   REAL,           -- Engine-level prefill latency in ms
+    retention_pct    REAL DEFAULT 0, -- Percentage of retained context
+    accuracy_pct     REAL DEFAULT 0, -- Accuracy score percentage
+    engine_version   TEXT,          -- Specific version for reproducibility
     created_at       TEXT NOT NULL DEFAULT (datetime('now'))
     )`;
 
   await db`CREATE TABLE IF NOT EXISTS bench_tests (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     run_id      INTEGER NOT NULL REFERENCES bench_runs(id),
-    category    TEXT NOT NULL,
+    category    TEXT NOT NULL,      -- 'speed', 'retention', 'accuracy'
     name        TEXT NOT NULL,
     passed      INTEGER NOT NULL DEFAULT 0,
-    details     TEXT,
+    details     TEXT,                -- JSON string including full engine metadata (spec-aligned)
     created_at  TEXT NOT NULL DEFAULT (datetime('now'))
     )`;
 }
