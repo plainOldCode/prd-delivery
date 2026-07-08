@@ -2,8 +2,10 @@
 import db from '../db/client';
 
 /**
- * Global Interface Definitions
+ * Global Configuration
  */
+const OLLAMA_URL = 'http://localhost:11434/api/generate';
+
 export interface ModelInfo {
   name: string;
   size?: string;
@@ -16,19 +18,23 @@ export interface BenchmarkScore {
   promptEvalMs: number;
 }
 
-export interface BenchRunResult {
-  modelName: string;
-  engineType: 'olloma' | 'mlx';
-  hardwareInfo: string;
-  score: BenchmarkScore;
-  retentionPct: number;
-  accuracyPct: number;
-}
+// This type is needed for the router's expectations in its logic
+export type BenchRun = {
+    runId: number;
+    model: string;
+    hardware: string;
+    runtime: string;
+    promptTps: number;
+    genTps: number;
+    ttftMs: number;
+    retentionPct: number;
+    accuracyPct: number;
+};
 
 /**
  * 1. SPEED BENCHMARK (The primary throughput/latency metric)
  */
-export async function runSpeed_bench(modelName: string, baseUrl: string): Promise<BenchRunResult> {
+export async function runSpeed_bench(modelName: string, baseUrl: string): Promise<any> {
   const endpoint = `${baseUrl}/api/generate`;
   const prompt = "Explain the concept of quantum entanglement in three paragraphs.";
 
@@ -44,7 +50,6 @@ export async function runSpeed_bench(modelName: string, baseUrl: string): Promis
 
   const data = (await response.json()) as any;
 
-  // Extraction of metrics from engine metadata
   const promptEvalNs = data.prompt_eval_duration || 0;
   const evalNs = data.eval_duration || 0;
 
@@ -54,26 +59,21 @@ export async function runSpeed_bench(modelName: string, baseUrl: string): Promis
 
   console.log(`[Benchmark] ${modelName} speed -> prefillTps: ${prefillTps.toFixed(2)}, decodeTps: ${decodeTps.toFixed(2)}`);
 
-  // Since the router handles the DB persistence, we return here or handle it via saveBenchRun if preferred.
-  // However, to keep the service self-contained as a runner, we assume the caller might want the raw result.
+  // Return the result structure that the router expects for its logic
   return {
-    modelName, 
-    engineType: 'olloma', // default for this tester
-    hardwareInfo: 'Local Machine', 
-    score: { promptTps: prefillTps, decodeTps: decodeTps, promptEvalMs: promptEvalMs },
-    retentionPct: 0, 
-    accuracyPct: 0
+    promptTps: prefillTps,
+    genTps: decodeTps,
+    ttftMs: promptEvalMs
   };
 }
 
 /**
  * 2. RETENTION BENCHMARK (Needle-in-a-Haystack)
  */
-export async function runRetention_bench(modelName: string, baseUrl: string): Promise<BenchRunResult> {
+export async function runRetention_bench(modelName: string, baseUrl: string): Promise<any> {
   const endpoint = `${baseUrl}/api/generate`;
   console.log(`[Benchmark] Starting retention test for ${modelName}...`);
 
-  // Setup haystack and needle
   const wordList = ["apple", "stone", "cloud", "stream", "mountain", "ocean", "forest", "river", "sky", "shadow"];
   let haystack = Array.from({ length: 2000 }, () => wordList[Math.floor(Math.random() * wordList.length)]).join(" ");
 
@@ -97,20 +97,13 @@ export async function runRetention_bench(modelName: string, baseUrl: string): Pr
 
   console.log(`[Benchmark] ${modelName} retention -> Success: ${success} (${retentionPct}%)`);
 
-  return {
-    modelName, 
-    engineType: 'olloma', 
-    hardwareInfo: 'Local Machine',
-    score: { promptTps: 0, decodeTps: 0, promptEvalMs: 0 },
-    retentionPct, 
-    accuracyPct: 0
-  };
+  return { score: retentionPct };
 }
 
 /**
  * 3. ACCURACY BENCHMARK (Task-based evaluation)
  */
-export async function runAccuracy_bench(modelName: string, baseUrl: string): Promise<BenchRunResult> {
+export async function runAccuracy_bench(modelName: string, baseUrl: string): Promise<any> {
   const endpoint = `${baseUrl}/api/generate`;
   console.log(`[Benchmark] Starting accuracy test for ${modelName}...`);
 
@@ -119,7 +112,7 @@ export async function runAccuracy_bench(modelName: string, baseUrl: string): Pro
     "extraction_01": { prompt: "Extract the capital of France from this text: 'The city of Paris is a great place for tourism.' Return only the name.", expected: "Paris" }
   };
 
-  const task = tasks["extraction_01"]; // Defaulting to extraction for demonstration
+  const task = tasks["extraction_01"]; 
   const prompt = task.prompt;
 
   const response = await fetch(endpoint, {
@@ -137,18 +130,11 @@ export async function runAccuracy_bench(modelName: string, baseUrl: string): Pro
 
   console.log(`[Benchmark] ${modelName} accuracy -> Success: ${success} (${accuracyPct}%)`);
 
-  return {
-    modelName, 
-    engineType: 'olloma', 
-    hardwareInfo: 'Local Machine',
-    score: { promptTps: 0, decodeTps: 0, promptEvalMs: 0 },
-    retentionPct: 0, 
-    accuracyPct
-  };
+  return { score: accuracyPct };
 }
 
 /**
- * REQUIRED EXPORTS FOR THE ROUTER (Matching the exact names from breadcrumb/error log)
+ * REQUIRED EXPORTS FOR THE ROUTER
  */
 
 export const listModels = async (runtime: string = 'olloma'): Promise<ModelInfo[]> => {
@@ -161,8 +147,6 @@ export const listModelsMLX = async (): Promise<ModelInfo[]> => [
 ];
 
 export const saveBenchRun = async (run: any) => {
-  // This function is expected by the router to persist results.
-  // The actual DB operation happens here in the service layer.
   await db`INSERT INTO bench_runs (
     model_name, engine_type, hardware, prefill_tps, decode_tps, prompt_eval_ms, retention_pct, accuracy_pct, engine_version
   ) VALUES (
@@ -179,3 +163,6 @@ export const saveBenchRun = async (run: any) => {
 };
 
 export const stubModelList = [ {name: 'llama3', size: '8b'} ];
+
+export async function getRecentRuns(limit = 50) { return await db`SELECT * FROM bench_runs ORDER BY created_at DESC LIMIT ${limit}`; }
+export async function getRunResult(id: number) { return await db`SELECT * FROM bench_runs WHERE rowid = ${id} LIMIT 1`; }
