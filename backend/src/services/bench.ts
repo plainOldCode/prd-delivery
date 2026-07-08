@@ -18,18 +18,20 @@ export interface BenchmarkScore {
   promptEvalMs: number;
 }
 
-// This type is needed for the router's expectations in its logic
-export type BenchRun = {
-    runId: number;
-    model: string;
-    hardware: string;
-    runtime: string;
-    promptTps: number;
-    genTps: number;
-    ttftMs: number;
-    retentionPct: number;
-    accuracyPct: number;
-};
+/**
+ * Matches the structure expected by the router's logic
+ */
+export interface BenchRun {
+  runId: number;
+  model: string;
+  hardware: string;
+  runtime: string;
+  promptTps: number;
+  genTps: number;
+  ttftMs: number;
+  retentionPct: number;
+  accuracyPct: number;
+}
 
 /**
  * 1. SPEED BENCHMARK (The primary throughput/latency metric)
@@ -50,6 +52,7 @@ export async function runSpeed_bench(modelName: string, baseUrl: string): Promis
 
   const data = (await response.json()) as any;
 
+  // Calculation using engine metadata for high precision
   const promptEvalNs = data.prompt_eval_duration || 0;
   const evalNs = data.eval_duration || 0;
 
@@ -59,7 +62,6 @@ export async function runSpeed_bench(modelName: string, baseUrl: string): Promis
 
   console.log(`[Benchmark] ${modelName} speed -> prefillTps: ${prefillTps.toFixed(2)}, decodeTps: ${decodeTps.toFixed(2)}`);
 
-  // Return the result structure that the router expects for its logic
   return {
     promptTps: prefillTps,
     genTps: decodeTps,
@@ -68,12 +70,13 @@ export async function runSpeed_bench(modelName: string, baseUrl: string): Promis
 }
 
 /**
- * 2. RETENTION BENCHMARK (Needle-in-a-Haystack)
+ * 2. RETENTION BENCHMARK (Needle-in-a-haystack)
  */
 export async function runRetention_bench(modelName: string, baseUrl: string): Promise<any> {
   const endpoint = `${baseUrl}/api/generate`;
   console.log(`[Benchmark] Starting retention test for ${modelName}...`);
 
+  // Setup Haystack-style context
   const wordList = ["apple", "stone", "cloud", "stream", "mountain", "ocean", "forest", "river", "sky", "shadow"];
   let haystack = Array.from({ length: 2000 }, () => wordList[Math.floor(Math.random() * wordList.length)]).join(" ");
 
@@ -134,7 +137,7 @@ export async function runAccuracy_bench(modelName: string, baseUrl: string): Pro
 }
 
 /**
- * REQUIRED EXPORTS FOR THE ROUTER
+ * REQUIRED EXPORTS FOR THE ROUTER (Strictly following the import list)
  */
 
 export const listModels = async (runtime: string = 'olloma'): Promise<ModelInfo[]> => {
