@@ -36,13 +36,16 @@ export interface BenchRun {
 /**
  * 1. SPEED BENCHMARK (The primary throughput/latency metric)
  */
-export async function runSpeedBench(modelName: string, baseUrl: string): Promise<any> {
+export async function runSpeed_bench(modelName: string, baseUrl: {toString(): string}): Promise<any> {
   const endpoint = `${baseUrl}/api/generate`;
   const prompt = "Explain the concept of quantum entanglement in three paragraphs.";
 
   console.log(`[Benchmark] Starting speed test for ${modelName} via ${endpoint}...`);
 
-  const response = await fetch(endpoint, {
+  // The router passes baseUrl as a string or an object with toString, we treat as template literal compatible
+  const url = typeof baseUrl === 'object' ? (baseUrl as any).toString() : baseUrl;
+
+  const response = await fetch(`${url}/api/generate`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ model: modelName, prompt: prompt, stream: false }),
@@ -72,8 +75,9 @@ export async function runSpeedBench(modelName: string, baseUrl: string): Promise
 /**
  * 2. RETENTION BENCHMARK (Needle-in-a-haystack)
  */
-export async function runRetention_bench(modelName: string, baseUrl: string): Promise<any> {
-  const endpoint = `${baseUrl}/api/generate`;
+export async function runRetention_bench(modelName: string, baseUrl: any): Promise<any> {
+  const url = typeof baseUrl === 'object' ? (baseUrl as any).toString() : baseUrl;
+  const endpoint = `${url}/api/generate`;
   console.log(`[Benchmark] Starting retention test for ${modelName}...`);
 
   // Setup Haystack-style context
@@ -106,13 +110,14 @@ export async function runRetention_bench(modelName: string, baseUrl: string): Pr
 /**
  * 3. ACCURACY BENCHMARK (Task-based evaluation)
  */
-export async function runAccuracy_bench(modelName: string, baseUrl: string): Promise<any> {
-  const endpoint = `${baseUrl}/api/generate`;
+export async function runAccuracy_bench(modelName: string, baseUrl: any): Promise<any> {
+  const url = typeof baseUrl === 'object' ? (baseUrl as any).toString() : baseUrl;
+  const endpoint = `${url}/api/generate`;
   console.log(`[Benchmark] Starting accuracy test for ${modelName}...`);
 
   const tasks = {
     "logic_01": { prompt: "If all roses are flowers and some flowers are red, is every rose red? Answer with 'Yes' or 'No'.", expected: "No" },
-    "extraction_01": { prompt: "Extract the capital of France from this text: 'The city of Paris is a great place for tourism.' Return only the name.", expected:- "Paris" }
+    "extraction_01": { prompt: "Extract the capital of France from this text: 'The city of Paris is a great place for tourism.' Return only the name.", expected: "Paris" }
   };
 
   const task = tasks["extraction_01"]; 
