@@ -36,7 +36,7 @@ export interface BenchRun {
 /**
  * 1. SPEED BENCHMARK (The primary throughput/latency metric)
  */
-export async function runSpeed_bench(modelName: string, baseUrl: string): Promise<any> {
+export async function runSpeedBench(modelName: string, baseUrl: string): Promise<any> {
   const endpoint = `${baseUrl}/api/generate`;
   const prompt = "Explain the concept of quantum entanglement in three paragraphs.";
 
@@ -112,7 +112,7 @@ export async function runAccuracy_bench(modelName: string, baseUrl: string): Pro
 
   const tasks = {
     "logic_01": { prompt: "If all roses are flowers and some flowers are red, is every rose red? Answer with 'Yes' or 'No'.", expected: "No" },
-    "extraction_01": { prompt: "Extract the capital of France from this text: 'The city of Paris is a great place for tourism.' Return only the name.", expected: "Paris" }
+    "extraction_01": { prompt: "Extract the capital of France from this text: 'The city of Paris is a great place for tourism.' Return only the name.", expected:- "Paris" }
   };
 
   const task = tasks["extraction_01"]; 
