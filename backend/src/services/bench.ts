@@ -15,7 +15,7 @@ export interface BenchmarkScore {
 }
 
 export interface BenchRun {
-  runId: number;
+  runId: string;
   model: string;
   hardware: string;
   runtime: string;
@@ -100,20 +100,49 @@ export const listModelsMLX = async (): Promise<ModelInfo[]> => [
   { name: 'mistral-mlx', size: '7b' },
 ];
 
-export const saveBenchRun = async (run: any): Promise<void> => {
-  await db`INSERT INTO bench_runs (
-    model_name, engine_type, hardware, prefill_tps, decode_tps, prompt_eval_ms, retention_pct, accuracy_pct, engine_version
-   ) VALUES (
-     ${run.model},
-     ${run.runtime || 'ollama'},
-     ${run.hardware},
-     ${run.promptTps || 0},
-     ${run.genTps || 0},
-     ${run.ttftMs || 0},
-     ${run.retentionPct || 0},
-     ${run.accuracyPct || 0},
-     'v1.1-stable'
-   )`;
+export interface BenchRun {
+  runId: string;
+  model: string;
+  hardware: string;
+  runtime: string;
+  promptTps: number;
+  genTps: number;
+  ttftMs: number;
+  retentionPct: number;
+  accuracyPct: number;
+  speedTests?: Array<{ category: string; name: string; passed: boolean; details: unknown }>;
+  retentionTests?: Array<{ category: string; name: string; passed: boolean; details: unknown }>;
+  accuracyTests?: Array<{ category: string; name: string; passed: boolean; details: unknown }>;
+}
+
+export const saveBenchRun = async (run: BenchRun): Promise<number> => {
+  const result: any = await db`INSERT INTO bench_runs (
+    model_name, runtime, hardware, speed_prompt_tps, speed_gen_tps, speed_ttft_ms, retention_pct, accuracy_pct, engine_version
+  ) VALUES (
+    ${run.model},
+    ${run.runtime || 'ollama'},
+    ${run.hardware},
+    ${run.promptTps || 0},
+    ${run.genTps || 0},
+    ${run.ttftMs || 0},
+    ${run.retentionPct || 0},
+    ${run.accuracyPct || 0},
+    'v1.1-stable'
+  )`;
+  const rowid = result?.changes ?? 0;
+
+  // Save test details
+  const allTests = [
+    ...(run.speedTests || []),
+    ...(run.retentionTests || []),
+    ...(run.accuracyTests || []),
+  ];
+  for (const t of allTests) {
+    await db`INSERT INTO bench_tests (run_id, category, name, passed, details)
+      VALUES (${rowid}, ${t.category}, ${t.name}, ${t.passed ? 1 : 0}, ${JSON.stringify(t.details) || null})`;
+  }
+
+  return rowid;
 };
 
 export function stubModelList(): ModelInfo[] {

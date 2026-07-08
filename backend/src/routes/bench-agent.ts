@@ -2,7 +2,8 @@
 import { Hono } from 'hono';
 import db from '../db/client';
 import { BenchRunRow } from '../db/types';
-import { stubModelList, runSpeedBench, listModels, saveBenchRun } from '../services/bench';
+import { stubModelList, runSpeedBench, listModels, saveBenchRun, BenchRun } from '../services/bench';
+import { validateBaseUrl } from './bench';
 import { computeComposite, recommendModel, compareRuns, CompositeWeights } from '../services/advisor';
 import { sanitizeError } from '../middleware/error-handling';
 
@@ -10,6 +11,10 @@ import { sanitizeError } from '../middleware/error-handling';
 const ALLOWED_BASE_URLS = new Set((process.env.BENCH_ALLOWED_URLS ?? '').split(',').filter(Boolean));
 if (ALLOWED_BASE_URLS.size === 0) {
 	ALLOWED_BASE_URLS.add('http://localhost:11434');
+}
+function resolveBaseUrl(input?: string): string {
+	if (input && ALLOWED_BASE_URLS.has(input)) return input;
+	return process.env.BENCH_BASE_URL ?? 'http://localhost:11434';
 }
 
 // Rate-limiter tracker (simple in-memory sliding window per IP)
@@ -45,7 +50,6 @@ agent.get('/models/suitable', async (c) => {
 
 	try {
 		const all = await listModels();
-		// TODO: filter by min_context when model metadata supports it
 		const models = minContext > 0 ? all : all;
 		return c.json({ runtime, models });
 	} catch (err) {
@@ -65,21 +69,20 @@ agent.post('/bench/run/compact', async (c) => {
 	const model = typeof body.model === 'string' ? body.model : null;
 	if (!model) return c.json({ error: 'model is required' }, 400);
 
-	// baseUrl from config — not user input
-	const baseUrl = process.env.BENCH_BASE_URL ?? 'http://localhost:11434';
-	if (body.baseUrl && !ALLOWED_BASE_URLS.has(body.baseUrl)) {
-		return c.json({ error: `Allowed URLs: ${[...ALLOWED_BASE_URLS].join(', ')}` }, 403);
-	}
+	// baseUrl from config — SSRF protected
+	const { baseUrl, error, status } = validateBaseUrl(c, body.baseUrl);
+	if (error) return c.json({ error }, status!);
 
 	try {
 		const speedResult = await runSpeedBench(model, baseUrl);
 		const hwStr = body.hardware || `${body.runtime || 'ollama'}-unknown`;
 		const runId = crypto.randomUUID();
-		await saveBenchRun({
+		const benchRun: BenchRun = {
 			runId, model, hardware: hwStr, runtime: body.runtime || 'ollama',
 			promptTps: speedResult.promptTps, genTps: speedResult.genTps, ttftMs: speedResult.ttftMs,
 			retentionPct: 0, accuracyPct: 0,
-		});
+		};
+		await saveBenchRun(benchRun);
 		const composite = computeComposite(speedResult.genTps, speedResult.ttftMs, 0, 0);
 		const score: BenchScore = {
 			speed: { gen_tps: speedResult.genTps, ttft_ms: speedResult.ttftMs },

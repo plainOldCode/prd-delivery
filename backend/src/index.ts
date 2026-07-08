@@ -32,9 +32,9 @@ export { app };
 /*  Start only when run directly                                                 */
 /* ------------------------------------------------------------------ */
 async function start() {
-  const { initDb } = await import('./db/client');
+  const { initDb, ensureIndexes } = await import('./db/client');
   await initDb();
-  await import('./services/advisor').then(m => m.ensureIndexes());
+  await ensureIndexes();
 
   const port = parseInt(process.env.PORT ?? '3001', 10);
   serve({ fetch: (request) => app.fetch(request), port });

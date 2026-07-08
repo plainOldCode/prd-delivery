@@ -28,26 +28,33 @@ export async function initDb() {
 	await db`CREATE TABLE IF NOT EXISTS bench_runs (
 		id               INTEGER PRIMARY KEY AUTOINCREMENT,
 		model_name       TEXT NOT NULL,
-		engine_type      TEXT,            -- e.g., 'ollama', 'mlx'
-		hardware_info    TEXT,           -- hardware details for reproducibility
-		prefill_tps      REAL,         -- Prompt throughput (tokens/s) - Nullable for precision handling
-		decode_tps       REAL,        -- Generation throughput (tokens/s)
-		prompt_eval_ms   REAL,          -- Engine-level prefill latency in ms
- retention_pct    REAL DEFAULT 0, -- Percentage of retained context
- accuracy_pct     REAL DEFAULT 0, -- Accuracy score percentage
-		engine_version   TEXT,        -- Specific version for reproducibility
-      created_at       TEXT NOT NULL DEFAULT (datetime('now'))
+		runtime          TEXT,
+		hardware         TEXT,
+		speed_prompt_tps REAL,
+		speed_gen_tps    REAL,
+		speed_ttft_ms    REAL,
+		retention_pct    REAL DEFAULT 0,
+		accuracy_pct     REAL DEFAULT 0,
+		engine_version   TEXT,
+		created_at       TEXT NOT NULL DEFAULT (datetime('now'))
 	)`;
 
 	await db`CREATE TABLE IF NOT EXISTS bench_tests (
 		id          INTEGER PRIMARY KEY AUTOINCREMENT,
 		run_id      INTEGER NOT NULL REFERENCES bench_runs(id),
-		category    TEXT NOT NULL,       -- 'speed', 'retention', 'accuracy'
+		category    TEXT NOT NULL,
 		name        TEXT NOT NULL,
 		passed      INTEGER NOT NULL DEFAULT 0,
-		details     TEXT,                -- JSON string including full engine metadata (spec-aligned)
-	 created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+		details     TEXT,
+		created_at  TEXT NOT NULL DEFAULT (datetime('now'))
 	)`;
+}
+
+// Indexes
+export async function ensureIndexes() {
+	await db`CREATE INDEX IF NOT EXISTS idx_bench_model ON bench_runs(model_name)`;
+	await db`CREATE INDEX IF NOT EXISTS idx_bench_created ON bench_runs(created_at DESC)`;
+	await db`CREATE INDEX IF NOT EXISTS idx_bench_tests_run ON bench_tests(run_id)`;
 }
 
 // Auto-init on import so tests don't need to call initDb() manually

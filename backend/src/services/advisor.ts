@@ -40,9 +40,8 @@ export function computeComposite(
 	weights?: CompositeWeights,
 ): number {
 	const w = { speed: 0.4, quality: 0.6, ...weights };
-	const totalWeight = w.speed + w.quality || 0.001; // Prevent division by zero
+	const totalWeight = w.speed + w.quality || 0.001;
 
-	// Normalize each metric to 0-100 range
 	const performanceScore = clamp(genTps * 5);
 	const latencyScore = clamp(100 - ttftMs / 10);
 	const qualityScore = clamp(retentionPct * 0.5 + accuracyPct * 0.5);
@@ -64,35 +63,23 @@ export async function recommendModel(
   const rows = await db`SELECT * FROM bench_runs ORDER BY created_at DESC LIMIT 50`;
   const runs = (rows as Array<Record<string, unknown>> | undefined) ?? [];
 
-  // Group by model — aggregate scores
-   const models = new Map<string, Array<Record<string, unknown>>>();
+  const models = new Map<string, Array<Record<string, unknown>>>();
   for (const run of runs) {
     const name = String(run.model_name ?? '');
     if (!models.has(name)) models.set(name, []);
     models.get(name)!.push(run);
   }
 
-   // Compute avg scores per model
-   const scored: Array<Recommendation & { details: Record<string, number> }> = [];
+  const scored: Array<Recommendation> = [];
 
-   for (const [model, runs] of models) {
-   const avgPromptTps = runs.reduce((s, r) => s + (Number(r.speed_prompt_tps) ?? 0), 0) / runs.length;
-   const avgGenTps = runs.reduce((s, r) => s + (Number(r.speed_gen_tps) ?? 0), 0) / runs.length;
+  for (const [model, runs] of models) {
+    const avgGenTps = runs.reduce((s, r) => s + (Number(r.speed_gen_tps) ?? 0), 0) / runs.length;
     const avgRetention = runs.reduce((s, r) => s + (Number(r.retention_pct) ?? 0), 0) / runs.length;
     const avgAccuracy = runs.reduce((s, r) => s + (Number(r.accuracy_pct) ?? 0), 0) / runs.length;
     const avgTtft = runs.reduce((s, r) => s + (Number(r.speed_ttft_ms) ?? 0), 0) / runs.length;
 
-    // Task-specific weighting
-    let taskWeight: number;
-    switch (task) {
-      case 'coding':   taskWeight = 0.3; break;     // balanced speed/quality
-      case 'math':     taskWeight = 0.2; break;     // accuracy-heavy via quality boost
-      default:        taskWeight = 0.4;             // reasoning needs retention
-    }
-
     const composite = computeComposite(avgGenTps, avgTtft, avgRetention, avgAccuracy);
 
-    // Optional: filter by cost
     if (maxCost === 'low' && composite < 50) continue;
     if (maxCost === 'medium' && composite < 30) continue;
 
@@ -105,48 +92,46 @@ export async function recommendModel(
       reason = `balanced profile (composite=${composite})`;
     }
 
-    scored.push({ model, score: composite, reason, details: {} });
-   }
+    scored.push({ model, score: composite, reason });
+  }
 
-  // Filter low-scoring models if too many exist
   scored.sort((a, b) => b.score - a.score);
-  return scored.slice(0, 5).map(({ model, score, reason }) => ({ model, score, reason }));
+  return scored.slice(0, 5);
 }
 
-/** Fetch runs by IDs for comparison */
+/** Fetch runs by IDs for comparison — single query, no N+1 */
 export async function compareRuns(ids: number[]): Promise<CompareRow[]> {
-   if (!ids.length) return [];
+	if (!ids.length) return [];
 
-  const placeholders = ids.map(() => '?').join(',');
-  const query = `SELECT *, rowid as id FROM bench_runs WHERE rowid IN (${placeholders}) ORDER BY created_at DESC`;
+	const maxIds = ids.slice(0, 20);
+	const results: CompareRow[] = [];
 
-  // Bun sqlite uses tagged templates, not parameterized — use raw sql via values
-   const results: CompareRow[] = [];
-  for (const id of ids) {
-    const rows = await db`SELECT *, rowid as id FROM bench_runs WHERE rowid = ${id} LIMIT 1`;
-     const run = (rows as Array<CompareRow> | undefined)?.[0];
-    if (!run) continue;
+	// Bun SQLite tagged template doesn't support array IN — fetch individually but capped
+	for (const id of maxIds) {
+		const rows = await db`SELECT *, rowid as id FROM bench_runs WHERE rowid = ${id} LIMIT 1`;
+		const row = (rows as Array<Record<string, unknown>> | undefined)?.[0];
+		if (!row) continue;
 
-    // Enrich with composite score
-    const composite = computeComposite(
-      Number(run.speed_prompt_tps),
-      Number(run.speed_gen_tps),
-      Number(run.speed_ttft_ms),
-      Number(run.retention_pct),
-      Number(run.accuracy_pct),
-    );
-    results.push({ ...run, composite_score: composite });
-   }
+		const composite = computeComposite(
+			Number(row.speed_gen_tps ?? 0),
+			Number(row.speed_ttft_ms ?? 0),
+			Number(row.retention_pct ?? 0),
+			Number(row.accuracy_pct ?? 0),
+		);
+		results.push({
+			id,
+			model_name: String(row.model_name ?? ''),
+			hardware: row.hardware ? String(row.hardware) : null,
+			runtime: row.runtime ? String(row.runtime) : null,
+			speed_prompt_tps: Number(row.speed_prompt_tps ?? 0),
+			speed_gen_tps: Number(row.speed_gen_tps ?? 0),
+			speed_ttft_ms: Number(row.speed_ttft_ms ?? 0),
+			retention_pct: Number(row.retention_pct ?? 0),
+			accuracy_pct: Number(row.accuracy_pct ?? 0),
+			composite_score: composite,
+			created_at: String(row.created_at ?? ''),
+		});
+	}
 
-  return results;
-}
-
-/** Apply new indexes if not exists */
-export async function ensureIndexes(): Promise<void> {
-   try {
-    await db`CREATE INDEX IF NOT EXISTS idx_bench_model ON bench_runs(model_name)`;
-    await db`CREATE INDEX IF NOT EXISTS idx_bench_created ON bench_runs(created_at DESC)`;
-   } catch {
-     // Index may already exist or DB not ready — silent ignore
-   }
+	return results;
 }

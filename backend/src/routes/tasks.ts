@@ -7,7 +7,14 @@ const taskRoutes = new Hono();
 // GET /tasks
 taskRoutes.get('/tasks', async (c) => {
   const rows = await db`SELECT * FROM sample_task ORDER BY id ASC`;
-  return c.json(rows);
+  return c.json(rows.map((r: Record<string, unknown>) => ({
+    id: Number(r.id), title: String(r.title ?? ''), status: String(r.status ?? ''),
+    customerRequest: r.customer_request ? String(r.customer_request) : undefined,
+    requestedWork: r.requested_work ? String(r.requested_work) : undefined,
+    targetDeliveryDate: r.target_delivery_date ? String(r.target_delivery_date) : undefined,
+    buildEstimate: r.build_estimate ? String(r.build_estimate) : undefined,
+    ownerName: r.owner_name ? String(r.owner_name) : undefined,
+  })));
 });
 
 // GET /tasks/:id
@@ -15,7 +22,15 @@ taskRoutes.get('/tasks/:id', async (c) => {
   const id = Number(c.req.param('id'));
   const [row] = await db`SELECT * FROM sample_task WHERE id = ${id}`;
   if (!row) return c.json({ error: 'not found' }, 404);
-  return c.json(row);
+  const r = row as Record<string, unknown>;
+  return c.json({
+    id: Number(r.id), title: String(r.title ?? ''), status: String(r.status ?? ''),
+    customerRequest: r.customer_request ? String(r.customer_request) : undefined,
+    requestedWork: r.requested_work ? String(r.requested_work) : undefined,
+    targetDeliveryDate: r.target_delivery_date ? String(r.target_delivery_date) : undefined,
+    buildEstimate: r.build_estimate ? String(r.build_estimate) : undefined,
+    ownerName: r.owner_name ? String(r.owner_name) : undefined,
+  });
 });
 
 // POST /tasks
