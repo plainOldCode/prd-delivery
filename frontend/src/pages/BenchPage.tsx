@@ -1,6 +1,6 @@
 // src/pages/BenchPage.tsx — Benchmark Dashboard (Dark Theme)
 import { useState } from 'react';
-import { useModels, useHardware, useRunBenchmark } from '../hooks/useBench';
+import { useModels, useHardware, useRunBenchmark, BenchRunResult, ModelInfo } from '../hooks/useBench';
 import { useNavigate } from 'react-router-dom';
 
 /* ---------- Stat Card ---------- */

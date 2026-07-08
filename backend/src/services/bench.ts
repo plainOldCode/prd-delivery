@@ -116,7 +116,7 @@ export interface BenchRun {
 }
 
 export const saveBenchRun = async (run: BenchRun): Promise<number> => {
-  const result: any = await db`INSERT INTO bench_runs (
+  const result: { changes?: number } = await db`INSERT INTO bench_runs (
     model_name, runtime, hardware, speed_prompt_tps, speed_gen_tps, speed_ttft_ms, retention_pct, accuracy_pct, engine_version
   ) VALUES (
     ${run.model},
