@@ -1,5 +1,10 @@
-// src/services/bench.ts — Benchmark runner for local LLM models
+// src/services/bench.ts — High-precision benchmark runner
 import db from '../db/client';
+
+/**
+ * Global Configuration
+ */
+const OLLAMA_URL = 'http://localhost:11434/api/generate';
 
 export interface ModelInfo {
   name: string;
@@ -7,285 +12,152 @@ export interface ModelInfo {
   digest?: string;
 }
 
-export interface BenchRun {
-  runId: number | string;
-  model: string;
-  hardware: string;
-  runtime: string;
+export interface BenchmarkScore {
   promptTps: number;
-  genTps: number;
-  ttftMs: number;
+  decodeTps: number; 
+  promptEvalMs: number;
+}
+
+export interface BenchRunResult {
+  modelName: string;
+  engineType: 'olloma' | 'mlx';
+  hardwareInfo: string;
+  score: BenchmarkScore;
   retentionPct: number;
   accuracyPct: number;
-  speedTests?: Array<{ category: string; name: string; passed: boolean; details?: Record<string, unknown> }>;
-  retentionTests?: Array<{ category: string; name: string; passed: boolean; details?: Record<string, unknown> }>;
-  accuracyTests?: Array<{ category: string; name: string; passed: boolean; details?: Record<string, unknown> }>;
 }
 
-export interface BenchTestRecord {
-  runId: number;
-  category: 'speed' | 'retention' | 'accuracy';
-  name: string;
-  passed: boolean;
-  details?: Record<string, unknown>;
-}
+/**
+ * 1. Speed Benchmark (Measuring Latency and Throughput)
+ */
+export async function runSpeed_bench(modelName: string, engineType: 'olloma' | 'mlx', hardwareInfo: string): Promise<BenchRunResult> {
+  const prompt = "Explain the concept of quantum entanglement in three paragraphs.";
 
-/** List models from Olloma endpoint */
-export async function listModels(baseUrl = 'http://localhost:11434'): Promise<ModelInfo[]> {
-  if (process.env.BENCH_MOCK === 'true') return stubModelList();
+  console.log(`[Benchmark] Starting speed test for ${modelName} via ${engineType}...`);
 
-  try {
-    const resp = await fetch(`${baseUrl}/api/tags`);
-    if (!resp.ok) return [];
-    const data = await resp.json() as { models?: Array<{ name: string; size?: number; digest?: string }> };
-    return (data.models ?? []).map((m) => ({
-      name: m.name,
-      size: String(m.size ?? ''),
-      digest: m.digest,
-    }));
-  } catch {
-    return []; // Olloma not running — return empty
-  }
-}
-
-/** List models from MLX endpoint (experimental) */
-export async function listModelsMLX(baseUrl = 'http://localhost:8080'): Promise<ModelInfo[]> {
-  if (process.env.BENCH_MOCK === 'true') return stubModelList();
-
-  try {
-    const resp = await fetch(`${baseUrl}/models`);
-    if (!resp.ok) return [];
-    const data = await resp.json() as { models?: string[] };
-    return (data.models ?? []).map((m) => ({ name: m }));
-  } catch {
-    return [];
-  }
-}
-
-/** Run speed benchmark — measure token throughput and TTFT using Olloma's high-precision metadata */
-export async function runSpeedBench(model: string, baseUrl = 'http://localhost:11434'): Promise<{ promptTps: number; genTps: number; ttftMs: number }> {
-  if (process.env.BENCH_MOCK === 'true') {
-    return { promptTps: 45.2, genTps: 12.8, ttftMs: 140 };
-  }
-
-  const testPrompt = 'Write a short poem about technology in exactly 50 words.';
-
-  // Change to stream: false for production-grade reliability and exact metadata extraction
-  const resp = await fetch(`${baseUrl}/api/generate`, {
+  const response = await fetch(OLLAMA_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ model, prompt: testPrompt, stream: false, options: { num_predict: 128 } }),
+    body: JSON.stringify({ model: modelName, prompt: prompt, stream: false }),
   });
 
-  if (!resp.ok) throw new Error(`Model endpoint error: ${resp.status}`);
+  if (!response.ok) throw new Error(`Engine call failed with status: ${response.status}`);
 
-  const data = await resp.json() as any;
+  const data = (await response.json()) as any;
 
-  // Verify specialized metadata presence for high-precision calculation
-  if (typeof data.prompt_eval_count !== 'number' || typeof data.eval_duration !== 'number') {
-    throw new Error('Ollama response missing required engine metadata for high-precision measurement.');
-  }
+  // Extraction of metrics from engine metadata
+  const promptEvalNs = data.prompt_eval_duration || 0;
+  const evalNs = data.eval_duration || 0;
 
-  // Calculate metrics using exact nanosecond durations provided by Ollama engine
-  const promptTps = data.prompt_eval_count > 0 
-    ? (data.prompt_eval_count / (data.prompt_eval_duration / 1_000_000_000)) 
-    : 0;
+  const prefillTps = data.prompt_eval_count > 0 ? (data.prompt_eval_count / (promptEvalNs / 1e9)) : 0;
+  const decodeTps = data.eval_count > 0 ? (data.eval_count / (evalNs / 1e9)) : 0;
+  const promptEvalMs = promptEvalNs / 1e6;
 
-  const genTps = data.eval_count > 0 
-    ? (data.eval_count / (data.eval_duration / 1_000_000_000)) 
-    : 0;
+  console.log(`[Benchmark] ${modelName} speed -> prefillTps: ${prefillTps.toFixed(2)}, decodeTps: ${decodeTps.toFixed(2)}, promptEvalMs: ${promptEvalMs.toFixed(2)}ms`);
 
-  // TTFT is approximated by prompt evaluation time transition into generation phase
-  const ttftMs = data.prompt_eval_duration / 1_000_000; 
+  await db`INSERT INTO bench_runs (
+    model_name, engine_type, hardware, prefill_tps, decode_tps, prompt_eval_ms, retention_pct, accuracy_pct, engine_version
+  ) VALUES (${modelName}, ${engineType}, ${hardwareInfo}, ${prefillTps}, ${decodeTps}, ${promptEvalMs}, 0, 0, 'v1.1-stable')`;
 
-  return { promptTps, genTps, ttftMs };
+  return {
+    modelName, engineType, hardwareInfo,
+    score: { promptTps: prefillTps, decodeTps: decodeTps, promptEvalMs: promptEvalMs },
+    retentionPct: 0, accuracyPct: 0
+  };
 }
 
-/** Run context retention test — needle-in-haystack */
-export async function runRetentionBench(
-  model: string,
-  baseUrl = 'http://localhost:11434',
-): Promise<{ score: number; details: Array<{ category: string; name: string; passed: boolean; details?: Record<string, unknown> }> }> {
-  if (process.env.BENCH_MOCK === 'true') {
-    return { 
-      score: 85, 
-      details: [
-        { category: 'retention', name: 'need500-start', passed: true, details: { contextSize: 500, position: 'start', response: 'The secret answer is SUPERWORD' } },
-        { category: 'retention', name: 'need1000-middle', passed: true, details: { contextSize: 1000, position: 'middle', response: 'SUPERWORD found' } },
-        { category: 'retention', name: 'need4000-end', passed: false, details: { contextSize: 4000, position: 'end', response: 'I cannot find it' } },
-      ] 
-    };
-  }
+/**
+ * 2. Retention Benchmark (Needle-in-a-Haystack)
+ */
+export async function runRetention_bench(modelName: string, engineType: 'olloma' | 'mlx', hardwareInfo: string, targetContextSize: number): Promise<BenchRunResult> {
+  console.log(`[Benchmark] Starting retention test for ${modelName} @ ~${targetContextSize} tokens...`);
 
-  const contextSizes = [500, 1000, 4000];
-  const positions = ['start', 'middle', 'end'];
-  const tests: Array<{ category: string; name: string; passed: boolean; details?: Record<string, unknown> }> = [];
-  let passedCount = 0;
+  const wordList = ["apple", "stone", "cloud", "stream", "mountain", "ocean", "forest", "river", "sky", "shadow"];
+  let haystack = Array.from({ length: targetContextSize }, () => wordList[Math.floor(Math.random() * wordList.length)]).join(" ");
 
-  for (const size of contextSizes) {
-    for (const pos of positions) {
-      const needle = `The secret answer to this question is: SUPERWORD-${size}-${pos}`;
-      const haystack = generateHaystack(size, needle, pos);
-      const query = 'What is the secret answer?';
+  const secretKey = `SECRET_KEY_${Math.random().toString(36).substring(7).toUpperCase()}`;
+  const injectionPoint = Math.floor(haystack.length / 2);
+  const modifiedHaystack = haystack.slice(0, injectionPoint) + ` ${secretKey} ` + haystack.slice(injectionPoint);
 
-      try {
-        const result = await queryModel(model, haystack + '\n\n' + query, baseUrl);
-        const passed = result.includes('SUPERWORD');
-        tests.push({
-          category: 'retention',
-          name: `need${size}-${pos}`,
-          passed,
-          details: { contextSize: size, position: pos, response: result.substring(0, 200) },
-         });
-        if (passed) passedCount++;
-      } catch {
-        tests.push({ category: 'retention', name: `need${size}-${pos}`, passed: false, details: { error: true } });
-      }
-    }
-  }
+  const prompt = `${modifiedHaystack}\n\nQuestion: What is the unique SECRET KEY found in the text above? Answer only with that key.`;
 
-  const total = tests.length;
-  const score = total > 0 ? (passedCount / total) * 100 : 0;
-  return { score, details: tests };
-}
+  console.log(`[Benchmark] ${modelName} retention: Injecting "${secretKey}" into context...`);
 
-/** Run accuracy test — rule-based QA */
-export async function runAccuracyBench(
-  model: string,
-  baseUrl = 'http://localhost:11434',
-): Promise<{ score: number; details: Array<{ category: string; name: string; passed: boolean; details?: Record<string, unknown> }> }> {
-  if (process.env.BENCH_MOCK === 'true') {
-    return { 
-      score: 70, 
-      details: [
-        { category: 'accuracy', name: 'What is 25 * 17?', passed: true, details: { expected: '425', response: '425' } },
-        { category: 'accuracy', name: 'Capital of France', passed: true, details: { expected: 'Paris', response: 'Paris' } },
-      ] 
-    };
-  }
-
-  const questions: Array<{ question: string; answer: string; pattern: string }> = [
-     { question: 'What is 25 * 17?', answer: '425', pattern: '425' },
-     { question: 'List the prime numbers between 1 and 20, separated by commas.', answer: '2,3,5,7,11,13,17,19', pattern: '\b2\b.*\b3\b.*\b5\b.*\b7\b.*\b11\b.*\b13\b.*\b17\b.*\b19\b' },
-     { question: 'What is the capital of France?', answer: 'Paris', pattern: 'Paris' },
-     { question: 'How many letters are in the word \"supercalifragilisticexpialidocious\"?', answer: '34', pattern: '34' },
-     { question: 'Calculate: 9.81 * 45 + 27.3 = ? Give just the number.', answer: '467.85', pattern: '(?:467\.?\d*)' },
-     { question: 'What is the square root of 144?', answer: '12', pattern: '\b12\b' },
-     { question: 'Name the planets between Earth and Saturn in order from the Sun.', answer: 'Mars, Jupiter', pattern: 'Mars.*Jupiter' },
-     { question: 'What is the chemical symbol for Gold?', answer: 'Au', pattern: '\bAu\b' },
-     { question: 'Convert 100 Celsius to Fahrenheit.', answer: '212', pattern: '212' },
-     { question: 'How many seconds are in a non-leap year?', answer: '31536000', pattern: '31536000' },
-  ];
-
-  const tests: Array<{ category: string; name: string; passed: boolean; details?: Record<string, unknown> }> = [];
-  let passedCount = 0;
-
-  for (const q of questions) {
-    try {
-      const result = await queryModel(model, q.question, baseUrl);
-      const passed = new RegExp(q.pattern).test(result);
-      tests.push({
-        category: 'accuracy',
-        name: q.question.substring(0, 30),
-        passed,
-        details: { expected: q.answer, response: result.substring(0, 200) },
-       });
-      if (passed) passedCount++;
-    } catch {
-      tests.push({ category: 'accuracy', name: q.question.substring(0, 30), passed: false, details: { error: true } });
-    }
-  }
-
-  const score = questions.length > 0 ? (passedCount / questions.length) * 100 : 0;
-  return { score, details: tests };
-}
-
-/** Save run results to database in a single transaction */
-export async function saveBenchRun(run: BenchRun): Promise<number> {
-  await db`BEGIN TRANSACTION`;
-  try {
-    await db`INSERT INTO bench_runs (model_name, hardware, runtime, speed_prompt_tps, speed_gen_tps, speed_ttft_ms, retention_pct, accuracy_pct)
-      VALUES (${run.model}, ${run.hardware}, ${run.runtime}, ${run.promptTps}, ${run.genTps}, ${run.ttftMs}, ${run.retentionPct}, ${run.accuracyPct})`;
-
-    const result = await db`SELECT last_insert_rowid() AS id`;
-    const runId = (result as Array<{ id: number }>)[0].id;
-
-    for (const test of run.retentionTests ?? []) {
-      await db`INSERT INTO bench_tests (run_id, category, name, passed, details)
-        VALUES (${runId}, ${test.category}, ${test.name}, ${test.passed ? 1 : 0}, ${JSON.stringify(test.details)})`;
-     }
-
-    for (const test of run.accuracyTests ?? []) {
-      await db`INSERT INTO bench_tests (run_id, category, name, passed, details)
-        VALUES (${runId}, ${test.category}, ${test.name}, ${test.passed ? 1 : 0}, ${JSON.stringify(test.details)})`;
-     }
-
-    for (const test of run.speedTests ?? []) {
-      await db`INSERT INTO bench_tests (run_id, category, name, passed, details)
-        VALUES (${runId}, ${test.category}, ${test.name}, ${1}, ${JSON.stringify(test.details)})`;
-     }
-
-    await db`COMMIT`;
-    return runId;
-   } catch (err) {
-    await db`ROLLBACK`;
-    throw err;
-   }
-}
-
-/** Stub implementations for testing without actual models */
-export function stubModelList(): ModelInfo[] {
-  return [
-    { name: 'llama3.2:1b', size: '1.3G', digest: 'sha256:abc' },
-    { name: 'qwen2:7b', size: '4.9G', digest: 'sha256:def' },
-  ];
-}
-
-function generateHaystack(wordCount: number, needle: string, position: string): string {
-  const fillers = [
-    'Artificial intelligence is transforming modern technology.',
-    'Machine learning models require significant computational resources.',
-    'Natural language processing enables human-computer interaction.',
-    'Deep neural networks are inspired by biological brains.',
-    'Neural networks learn through backpropagation algorithms.',
-    'The transformer architecture revolutionized natural language understanding.',
-    'Large language models are trained on massive text corpora.',
-    'Transfer learning allows models to adapt to new tasks efficiently.',
-    'Computational efficiency is critical for model deployment.',
-    'Benchmarking helps compare model performance across hardware.',
-    'Model quantization reduces memory requirements significantly.',
-    'Context window size affects how much information a model can process.',
-  ];
-
-  const parts: string[] = [];
-  if (position === 'start') {
-    parts.push(needle);
-    for (let i = 0; i < wordCount; i++) parts.push(fillers[i % fillers.length]);
-    return parts.join(' ');
-  }
-  if (position === 'end') {
-    for (let i = 0; i < wordCount; i++) parts.push(fillers[i % fillers.length]);
-    parts.push(needle);
-    return parts.join(' ');
-  }
-  const half = Math.floor(wordCount / 2);
-  for (let i = 0; i < half; i++) {
-    parts.push(fillers[i % fillers.length]);
-  }
-  parts.push(needle);
-  for (let i = half; i < wordCount; i++) {
-    parts.push(fillers[i % fillers.length]);
-  }
-  return parts.join(' ');
-}
-
-async function queryModel(model: string, prompt: string, baseUrl: string): Promise<string> {
-  const resp = await fetch(`${baseUrl}/api/generate`, {
+  const response = await fetch(OLLAMA_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ model, prompt, stream: false, options: { num_predict: 256 } }),
+    body: JSON.stringify({ model: modelName, prompt: prompt, stream: false }),
   });
-  if (!resp.ok) throw new Error(`Query failed: ${resp.status}`);
-  const data = await resp.json() as { response?: string };
-  return (data.response ?? '').trim();
+
+  if (!response.ok) throw new Error(`Engine call failed with status: ${response.status}`);
+  const data = await response.json() as any;
+
+  const success = data.response.includes(secretKey);
+  const retentionPct = success ? 100 : 0;
+
+  console.log(`[Benchmark] ${modelName} retention -> Success: ${success} (${retentionPct}%)`);
+
+  await db`INSERT INTO bench_runs (
+    model_name, engine_type, hardware, prefill_tps, decode_tps, prompt_eval_ms, retention_pct, accuracy_pct, engine_version
+  ) VALUES (${modelName}, ${engineType}, ${hardwareInfo}, 0, 0, 0, ${retentionPct}, 0, 'v1.1-stable')`;
+
+  return {
+    modelName, engineType, hardwareInfo,
+    score: { promptTps: 0, decodeTps: 0, promptEvalMs: 0 },
+    retentionPct, accuracyPct: 0
+  };
+}
+
+/**
+ * 3. Accuracy Benchmark (Task-based evaluation)
+ */
+export async function runAccuracy_bench(modelName: string, engineType: 'olloma' | 'mlx', hardwareInfo: string, testCaseId: string): Promise<BenchRunResult> {
+  console.log(`[Benchmark] Starting accuracy test for ${modelName} (Task ID: ${testCaseId})...`);
+
+  const tasks = {
+    "logic_01": {
+      prompt: "If all roses are flowers and some flowers are red, is every rose red? Answer with 'Yes' or 'No'.",
+      expected: "No"
+    },
+    "extraction_01": {
+      prompt: "Extract the capital of France from this text: 'The city of Paris is a great place for tourism.' Return only the name.",
+      expected: "Paris"
+    }
+  };
+
+  const task = tasks[testCaseId as keyof typeof tasks] || tasks["extraction_01"];
+  console.log(`[Benchmark] ${modelName} accuracy: Using Task [${testCaseId}]`);
+
+  const response = await fetch(OLLAMA_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ model: modelName, prompt: task.prompt, stream: false }),
+  });
+
+  if (!response.ok) throw new Error(`Engine call failed with status: ${response.status}`);
+  const data = await response.json() as any;
+  const outputText = data.response.trim();
+
+  const success = outputText.toLowerCase().includes(task.expected.toLowerCase());
+  const accuracyPct = success ? 100 : 0;
+
+  console.log(`[Benchmark] ${modelName} accuracy -> Success: ${success} (${accuracyPct}%)`);
+
+  await db`INSERT INTO bench_runs (
+    model_name, engine_type, hardware, prefill_tps, decode_tps, prompt_eval_ms, retention_pct, accuracy_pct, engine_version
+  ) VALUES (${modelName}, ${engineType}, ${hardwareInfo}, 0, 0, 0, 0, ${accuracyPct}, 'v1.1-stable')`;
+
+  return {
+    modelName, engineType, hardwareInfo,
+    score: { promptTps: 0, decodeTps: 0, promptEvalMs: 0 },
+    retentionPct: 0, accuracyPct
+  };
+}
+
+export async function getRecentRuns(limit = 50) {
+  return await db`SELECT * FROM bench_runs ORDER BY created_at DESC LIMIT ${limit}`;
+}
+
+export async function getRunResult(id: number) {
+  return await db`SELECT * FROM bench_runs WHERE id = ${id}`;
 }
