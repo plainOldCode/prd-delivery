@@ -1,5 +1,5 @@
 // src/hooks/useBench.ts — Benchmark API용 커스텀 훅 모음 (AbortController + refetch)
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 
 import { get, post, getApiUrl } from '../util/request.util';
 
@@ -145,6 +145,7 @@ export function useRunBenchmark() {
 	const [error, setError] = useState<string | null>(null);
 	const [progress, setProgress] = useState({ message: '', percent: 0 });
 	const [speedData, setSpeedData] = useState<SpeedDataPoint[]>([]);
+	const abortRef = useRef<AbortController | null>(null);
 
 	const run = useCallback(async (model: string) => {
 		setRunning(true);
@@ -153,12 +154,16 @@ export function useRunBenchmark() {
 		setProgress({ message: 'Benchmark 준비 중...', percent: 0 });
 		setSpeedData([]);
 
+		const controller = new AbortController();
+		abortRef.current = controller;
+
 		try {
 			const response = await fetch(getApiUrl('/api/bench/run'), {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify({ model }),
-			 });
+				signal: controller.signal,
+			});
 
 			if (!response.ok) throw new Error(`Svr Err: ${response.status}`);
 			if (!response.body) throw new Error('No response body');
@@ -196,7 +201,7 @@ export function useRunBenchmark() {
 									genTps: payload.speed?.genTps || 0,
 								};
 								setSpeedData(prev => [...prev, speedDataPoint]);
-								}
+							}
 						} else if (event === 'result') {
 							setResult(payload);
 								// Add final speed data point
@@ -217,16 +222,20 @@ export function useRunBenchmark() {
 			}
 		} catch (err: unknown) {
 			const e = err instanceof Error ? err : new Error('Benchmark 실행 실패');
-			setError(e.message ?? 'Benchmark 실행 실패');
-			setProgress({ message: '오류 발생', percent: 0 });
+			if (e.name === 'AbortError') {
+				setProgress({ message: 'Cancelled', percent: 0 });
+			} else {
+				setError(e.message ?? 'Benchmark 실행 실패');
+				setProgress({ message: '오류 발생', percent: 0 });
+			}
 		} finally {
 			setRunning(false);
+			abortRef.current = null;
 		}
 	 }, []);
 
 	const abortBench = useCallback(() => {
-		setRunning(false);
-		setProgress({ message: 'Cancelled', percent: 0 });
+		abortRef.current?.abort();
 	}, []);
 
 	return { result, running, error, progress, run, speedData, abortBench } as const;
