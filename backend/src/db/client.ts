@@ -11,7 +11,7 @@ if (url.startsWith('file://') || url === 'file::memory:') {
 const db = new SQL(connectionString);
 
 export async function initDb() {
-   // Core table for sample tasks (legacy)
+	// Core table for sample tasks (legacy)
 	await db`CREATE TABLE IF NOT EXISTS sample_task (
 		id              INTEGER PRIMARY KEY AUTOINCREMENT,
 		title           TEXT NOT NULL,
@@ -21,22 +21,23 @@ export async function initDb() {
 		requested_work    TEXT,
 		target_delivery_date TEXT,
 		build_estimate    TEXT,
-		owner_name      TEXT
+		owner_name       TEXT
 	)`;
 
-   // Refined Benchmark tables following GPT-5.5's high-precision feedback
+	// Refined Benchmark tables following GPT-5.5's high-precision feedback
 	await db`CREATE TABLE IF NOT EXISTS bench_runs (
-		id               INTEGER PRIMARY KEY AUTOINCREMENT,
-		model_name       TEXT NOT NULL,
-		runtime          TEXT,
-		hardware         TEXT,
+		id            INTEGER PRIMARY KEY AUTOINCREMENT,
+		run_id        TEXT NOT NULL UNIQUE,
+		model_name    TEXT NOT NULL DEFAULT 'unknown',
+		runtime       TEXT,
+		hardware      TEXT,
 		speed_prompt_tps REAL,
-		speed_gen_tps    REAL,
-		speed_ttft_ms    REAL,
-		retention_pct    REAL DEFAULT 0,
-		accuracy_pct     REAL DEFAULT 0,
-		engine_version   TEXT,
-		created_at       TEXT NOT NULL DEFAULT (datetime('now'))
+		speed_gen_tps REAL,
+		speed_ttft_ms REAL,
+		retention_pct REAL DEFAULT 0,
+		accuracy_pct  REAL DEFAULT 0,
+		engine_version TEXT,
+		created_at    TEXT NOT NULL DEFAULT (datetime('now'))
 	)`;
 
 	await db`CREATE TABLE IF NOT EXISTS bench_tests (
@@ -48,10 +49,8 @@ export async function initDb() {
 		details     TEXT,
 		created_at  TEXT NOT NULL DEFAULT (datetime('now'))
 	)`;
-}
 
-// Indexes
-export async function ensureIndexes() {
+	// Ensure indexes even on fresh DB from GHA runners
 	await db`CREATE INDEX IF NOT EXISTS idx_bench_model ON bench_runs(model_name)`;
 	await db`CREATE INDEX IF NOT EXISTS idx_bench_created ON bench_runs(created_at DESC)`;
 	await db`CREATE INDEX IF NOT EXISTS idx_bench_tests_run ON bench_tests(run_id)`;
@@ -59,6 +58,5 @@ export async function ensureIndexes() {
 
 // Auto-init on import so tests don't need to call initDb() manually
 await initDb();
-await ensureIndexes();
 
 export default db;

@@ -1,6 +1,7 @@
 // src/services/bench.ts — Benchmark runner, 100% match to router imports (camelCase)
 
 import db from '../db/client';
+import crypto from 'crypto';
 
 export interface ModelInfo {
   name: string;
@@ -103,11 +104,8 @@ export interface BenchRun {
   accuracyTests?: Array<{ category: string; name: string; passed: boolean; details: unknown }>;
 }
 
-export const saveBenchRun = async (run: BenchRun): Promise<number> => {
-  const result: { changes?: number } = await db`INSERT INTO bench_runs (
-    model_name, runtime, hardware, speed_prompt_tps, speed_gen_tps, speed_ttft_ms, retention_pct, accuracy_pct, engine_version
-  ) VALUES (
-    ${run.model},
+export const saveBenchRun = async (run: BenchRun): Promise<string | number> => {
+  const result: { changes?: number } = await db`INSERT INTO bench_runs (\n    run_id, model_name, runtime, hardware, speed_prompt_tps, speed_gen_tps, speed_ttft_ms, retention_pct, accuracy_pct, engine_version\n  ) VALUES (\n    ${run.runId},\n    ${run.model || 'unknown'},
     ${run.runtime || 'ollama'},
     ${run.hardware},
     ${run.promptTps || 0},

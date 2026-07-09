@@ -49,9 +49,9 @@ describe('LLM Benchmark API', () => {
     });
 
     it('GET /api/bench/:id returns run details with correct fields', async () => {
-        await db`INSERT INTO bench_runs (model_name, runtime, hardware, speed_prompt_tps, speed_gen_tps, speed_ttft_ms, retention_pct, accuracy_pct)
-          VALUES ('test-model', 'ollama', 'M2 Max', 10.0, 20.0, 300, 80, 90)`;
-        const res = await app.request(new Request('http://localhost/api/bench/1'));
+        await db`INSERT INTO bench_runs (run_id, model_name, runtime, hardware, speed_prompt_tps, speed_gen_tps, speed_ttft_ms, retention_pct, accuracy_pct)
+          VALUES ('test-run-1', 'test-model', 'ollama', 'M2 Max', 10.0, 20.0, 300, 80, 90)`;
+        const res = await app.request(new Request('http://localhost/api/bench/test-run-1'));
         expect(res.status).toBe(200);
         const body = await res.json() as any;
         expect(body.run.model).toBe('test-model');
@@ -60,17 +60,17 @@ describe('LLM Benchmark API', () => {
     });
 
     it('DELETE /api/bench/:id removes run and tests', async () => {
-        await db`INSERT INTO bench_runs (model_name, runtime, hardware, speed_prompt_tps, speed_gen_tps, speed_ttft_ms, retention_pct, accuracy_pct)
-          VALUES ('del-model', 'ollama', 'M2 Max', 1.0, 1.0, 1.0, 1.0, 1.0)`;
-        const delRes = await app.request(new Request('http://localhost/api/bench/2', { method: 'DELETE' }));
+        await db`INSERT INTO bench_runs (run_id, model_name, runtime, hardware, speed_prompt_tps, speed_gen_tps, speed_ttft_ms, retention_pct, accuracy_pct)
+          VALUES ('del-run-2', 'del-model', 'ollama', 'M2 Max', 1.0, 1.0, 1.0, 1.0, 1.0)`;
+        const delRes = await app.request(new Request('http://localhost/api/bench/del-run-2', { method: 'DELETE' }));
         expect(delRes.status).toBe(200);
-        const getRes = await app.request(new Request('http://localhost/api/bench/2'));
+        const getRes = await app.request(new Request('http://localhost/api/bench/del-run-2'));
         expect(getRes.status).toBe(404);
     });
 
     it('GET /api/bench/history returns runs with correct shape', async () => {
-        await db`INSERT INTO bench_runs (model_name, runtime, hardware, speed_prompt_tps, speed_gen_tps, speed_ttft_ms, retention_pct, accuracy_pct)
-          VALUES ('hist-model', 'mlx', 'M4', 15.0, 25.0, 150, 95, 88)`;
+        await db`INSERT INTO bench_runs (run_id, model_name, runtime, hardware, speed_prompt_tps, speed_gen_tps, speed_ttft_ms, retention_pct, accuracy_pct)
+          VALUES ('hist-run-3', 'hist-model', 'mlx', 'M4', 15.0, 25.0, 150, 95, 88)`;
         const res = await app.request(new Request('http://localhost/api/bench/history'));
         expect(res.status).toBe(200);
         const body = await res.json() as any;

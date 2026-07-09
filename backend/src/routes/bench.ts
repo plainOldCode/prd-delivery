@@ -223,8 +223,9 @@ bench.post('/bench/run', async (c) => {
     const ramGB = Math.round((hw.ramBytes / (1024 ** 3)) * 10) / 10;
     const hardwareLabel = `${hw.chip}, ${hw.cpuCoresPhysical} cores, ${ramGB}GB RAM`;
 
+    const runId = crypto.randomUUID(); // canonical UUID
     const benchRun: BenchRun = {
-      runId, // canonical UUID — shared between flow and GET lookup
+      runId,
       model,
       hardware: hardwareLabel,
       runtime: 'backend',
@@ -313,10 +314,11 @@ bench.delete('/bench/:id', async (c) => {
   const idParam = c.req.param('id');
 
   try {
-    // Try UUID lookup first if it looks like one (contains hyphens, length ~36)
-    if (idParam.length > 10 && !/^\d+$/.test(idParam)) {
-      await db`DELETE FROM bench_tests WHERE run_id = ${idParam}`;
+    // Try UUID/TEXT lookup first if it's not purely numeric
+    if (!/^\d+$/.test(idParam)) {
+      await db`DELETE FROM bench_tests WHERE run_id IN (SELECT id FROM bench_runs WHERE run_id = ${idParam})`;
       await db`DELETE FROM bench_runs WHERE run_id = ${idParam}`;
+
     } else {
       const parsedId = parseInt(idParam, 10);
       if (isNaN(parsedId)) return c.json({ error: 'Invalid ID' }, 400);
