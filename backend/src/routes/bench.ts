@@ -154,7 +154,16 @@ bench.post('/bench/run', async (c) => {
       accuracyPct: 65,
     };
 
-    await saveBenchRun(benchRun).catch(() => {});
+    // Save mock run and retrieve the actual numeric row id to return in SSE result event.
+    try {
+      await saveBenchRun(benchRun);
+    } catch {
+      // ignore — bench_runs may not exist if initDb hasn't been called yet
+    }
+    const saved = (await db`SELECT MAX(rowid) as latest FROM bench_runs`)[0] as Record<string, unknown> | undefined;
+    const latestId = typeof saved?.latest === 'number' ? String(saved.latest) : (Array.isArray(savedRuns ?? []) && savedRuns.length > 0)
+      ? String(savedRuns[0].id ?? '')
+      : String(runId);
 
     return streamText(c, async (stream) => {
       const sendEvent = async (event: string, data: object) => {
@@ -176,7 +185,7 @@ bench.post('/bench/run', async (c) => {
       await sendEvent('progress', { message: 'Accuracy test complete.', percent: 95 });
 
       const resultPayload = {
-        runId,
+        runId: latestId ?? null,
         model,
         hardware: hardwareLabel,
         speed: { promptTps: 12.56, genTps: 8.43, ttftMs: 200 },
@@ -262,12 +271,32 @@ bench.get('/bench/history', async (c) => {
   }
 });
 
-// GET /api/bench/:id — Get benchmark run details with tests
+// GET /api/bench/:id — Lookup by run_id (UUID) with tests
 bench.get('/bench/:id', async (c) => {
-  const parsedId = parseInt(c.req.param('id'), 10);
-  if (isNaN(parsedId)) return c.json({ error: 'Invalid ID' }, 400);
+  const idParam = c.req.param('id');
+
+  // Try integer lookup (rowid) first if numeric ID is passed
+  if (/^\d+$/.test(idParam)) {
+    const parsedId = Number(idParam);
+    try {
+      const rows = await db`SELECT * FROM bench_runs WHERE rowid = ${parsedId} LIMIT 1`;
+      const runRaw = Array.from(rows ?? [])[0] as Record<string, unknown> | undefined;
+      if (!runRaw) return c.json({ error: 'Not found' }, 404);
+      const run = {
+        id: Number(runRaw.id), run_id: String(runRaw.run_id ?? ''), model: String(runRaw.model_name ?? ''), hardware: String(runRaw.hardware ?? ''),
+        runtime: String(runRaw.runtime ?? ''), prompt_tps: Number(runRaw.speed_prompt_tps ?? 0), gen_tps: Number(runRaw.speed_gen_tps ?? 0),
+        ttft_ms: Number(runRaw.speed_ttft_ms ?? 0), retention_pct: Number(runRaw.retention_pct ?? 0), accuracy_pct: Number(runRaw.accuracy_pct ?? 0), created_at: String(runRaw.created_at ?? '')
+      };
+      const tests = await db`SELECT * FROM bench_tests WHERE run_id = ${runRaw.run_id} ORDER BY category, name`;
+      return c.json({ run, tests: Array.from(tests ?? []) });
+    } catch (err) {
+      return c.json({ error: String(err) }, 500);
+    }
+  }
+
+  // UUID lookup by run_id column
   try {
-    const rows = await db`SELECT *, rowid as id FROM bench_runs WHERE rowid = ${parsedId} LIMIT 1`;
+    const rows = await db`SELECT * FROM bench_runs WHERE run_id = ${idParam} LIMIT 1`;
     const runRaw = Array.from(rows ?? [])[0] as Record<string, unknown> | undefined;
     if (!runRaw) return c.json({ error: 'Not found' }, 404);
     const run = {
@@ -275,7 +304,7 @@ bench.get('/bench/:id', async (c) => {
       runtime: String(runRaw.runtime ?? ''), prompt_tps: Number(runRaw.speed_prompt_tps ?? 0), gen_tps: Number(runRaw.speed_gen_tps ?? 0),
       ttft_ms: Number(runRaw.speed_ttft_ms ?? 0), retention_pct: Number(runRaw.retention_pct ?? 0), accuracy_pct: Number(runRaw.accuracy_pct ?? 0), created_at: String(runRaw.created_at ?? '')
     };
-    const tests = await db`SELECT * FROM bench_tests WHERE run_id = ${parsedId} ORDER BY category, name`;
+    const tests = await db`SELECT * FROM bench_tests WHERE run_id = ${idParam} ORDER BY category, name`;
     return c.json({ run, tests: Array.from(tests ?? []) });
   } catch (err) {
     return c.json({ error: String(err) }, 500);

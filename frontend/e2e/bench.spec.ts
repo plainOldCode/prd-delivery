@@ -36,7 +36,7 @@ test.describe('LLM Benchmark E2E', () => {
 		const viewReportBtn = page.getByRole('button', { name: 'View Full Report' });
 		if (await viewReportBtn.isVisible()) {
 			await viewReportBtn.click();
-			await expect(page).toHaveURL(/\/results\/\d+/, { timeout: 5_000 });
+			await expect(page).toHaveURL(/\/results\/[a-f0-9-]+/, { timeout: 5_000 });
 			const detailHeading = page.getByTestId('bench-detail-heading');
 			await expect(detailHeading).toBeVisible({ timeout: 10_000 });
 			await expect(detailHeading).toContainText(modelName);
