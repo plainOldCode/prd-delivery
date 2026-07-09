@@ -10,6 +10,15 @@ const ALLOWED_BASE_URLS = new Set((process.env.BENCH_ALLOWED_URLS ?? '').split('
 if (ALLOWED_BASE_URLS.size === 0) {
   ALLOWED_BASE_URLS.add('http://localhost:11434');
 }
+
+/** UUID v4 generator — avoids crypto.randomUUID() which conflicts with bundler minification */
+function genUUID(): string {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+    const r = (crypto.getRandomValues(new Uint8Array(1))[0] % 16) | 0;
+    return (c === 'x' ? r : (r & 0x3) | 0x8).toString(16);
+  });
+}
+
 function validateBaseUrl(c: any, input?: string): { baseUrl: string; error?: string; status?: number } {
   const raw = typeof input === 'string' ? input : undefined;
   if (raw && !ALLOWED_BASE_URLS.has(raw)) {
@@ -74,7 +83,7 @@ bench.post('/bench/speed', async (c) => {
     const hardwareLabel = `${hw.chip}, ${hw.cpuCoresPhysical} cores, ${ramGB}GB RAM`;
 
     const benchRun: BenchRun = {
-      runId: crypto.randomUUID(),
+      runId: genUUID(),
       model,
       hardware: hardwareLabel,
       runtime: 'ollama',
@@ -141,7 +150,7 @@ bench.post('/bench/run', async (c) => {
     const ramGB = Math.round((hw.ramBytes / (1024 ** 3)) * 10) / 10;
     const hardwareLabel = `${hw.chip}, ${hw.cpuCoresPhysical} cores, ${ramGB}GB RAM`;
 
-    const runId = crypto.randomUUID();
+    const runId = genUUID();
     const benchRun: BenchRun = {
       runId,
       model,
@@ -237,7 +246,7 @@ bench.post('/bench/run', async (c) => {
     const ramGB = Math.round((hw.ramBytes / (1024 ** 3)) * 10) / 10;
     const hardwareLabel = `${hw.chip}, ${hw.cpuCoresPhysical} cores, ${ramGB}GB RAM`;
 
-    const runId = crypto.randomUUID(); // UUID v4 — canonical form for GET lookup
+    const runId = genUUID(); // UUID v4 — canonical form for GET lookup
 
     const benchRun: BenchRun = {
       runId,
