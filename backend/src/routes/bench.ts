@@ -161,9 +161,7 @@ bench.post('/bench/run', async (c) => {
       // ignore — bench_runs may not exist if initDb hasn't been called yet
     }
     const saved = (await db`SELECT MAX(rowid) as latest FROM bench_runs`)[0] as Record<string, unknown> | undefined;
-    const latestId = typeof saved?.latest === 'number' ? String(saved.latest) : (Array.isArray(savedRuns ?? []) && savedRuns.length > 0)
-      ? String(savedRuns[0].id ?? '')
-      : String(runId);
+    const latestId = (typeof saved?.latest === 'number') ? String(saved.latest) : runId;
 
     return streamText(c, async (stream) => {
       const sendEvent = async (event: string, data: object) => {
