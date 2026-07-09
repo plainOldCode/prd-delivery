@@ -60,8 +60,8 @@ export async function recommendModel(
   task: 'coding' | 'math' | 'reasoning' = 'reasoning',
   maxCost?: 'low' | 'medium' | 'high',
 ): Promise<Recommendation[]> {
-  const rows = await db`SELECT * FROM bench_runs ORDER BY created_at DESC LIMIT 50`;
-  const runs = (rows as Array<Record<string, unknown>> | undefined) ?? [];
+  const rows = (await db`SELECT * FROM bench_runs ORDER BY created_at DESC LIMIT 50`) as Array<Record<string, unknown>>;
+  const runs = rows ?? [];
 
   const models = new Map<string, Array<Record<string, unknown>>>();
   for (const run of runs) {
@@ -99,19 +99,17 @@ export async function recommendModel(
   return scored.slice(0, 5);
 }
 
-/** Fetch runs by IDs for comparison — single query, no N+1 */
+/** Fetch runs by IDs for comparison — single query using IN clause, no N+1 */
 export async function compareRuns(ids: number[]): Promise<CompareRow[]> {
 	if (!ids.length) return [];
 
 	const maxIds = ids.slice(0, 20);
+	const placeholders = maxIds.map(() => '?').join(', ');
+	const rawRows = db.query(`SELECT *, rowid as id FROM bench_runs WHERE rowid IN (${placeholders})`, ...maxIds);
+	const rows = Array.from(rawRows ?? []);
+
 	const results: CompareRow[] = [];
-
-	// Bun SQLite tagged template doesn't support array IN — fetch individually but capped
-	for (const id of maxIds) {
-		const rows = await db`SELECT *, rowid as id FROM bench_runs WHERE rowid = ${id} LIMIT 1`;
-		const row = (rows as Array<Record<string, unknown>> | undefined)?.[0];
-		if (!row) continue;
-
+	for (const row of rows as Array<Record<string, unknown>>) {
 		const composite = computeComposite(
 			Number(row.speed_gen_tps ?? 0),
 			Number(row.speed_ttft_ms ?? 0),
@@ -119,7 +117,7 @@ export async function compareRuns(ids: number[]): Promise<CompareRow[]> {
 			Number(row.accuracy_pct ?? 0),
 		);
 		results.push({
-			id,
+			id: Number(row.id),
 			model_name: String(row.model_name ?? ''),
 			hardware: row.hardware ? String(row.hardware) : null,
 			runtime: row.runtime ? String(row.runtime) : null,

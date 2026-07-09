@@ -58,6 +58,7 @@ export async function ensureIndexes() {
 }
 
 // Auto-init on import so tests don't need to call initDb() manually
-initDb();
+await initDb();
+await ensureIndexes();
 
 export default db;
