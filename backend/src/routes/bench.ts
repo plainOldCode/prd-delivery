@@ -154,14 +154,12 @@ bench.post('/bench/run', async (c) => {
       accuracyPct: 65,
     };
 
-    // Save mock run and retrieve the actual numeric row id to return in SSE result event.
+    // Save mock run — always return the UUID (run_id), never numeric rowid.
     try {
       await saveBenchRun(benchRun);
     } catch {
-      // ignore — bench_runs may not exist if initDb hasn't been called yet
+      /* bench_runs may not exist if initDb hasn't been called yet */
     }
-    const saved = (await db`SELECT MAX(rowid) as latest FROM bench_runs`)[0] as Record<string, unknown> | undefined;
-    const latestId = (typeof saved?.latest === 'number') ? String(saved.latest) : runId;
 
     return streamText(c, async (stream) => {
       const sendEvent = async (event: string, data: object) => {
@@ -183,7 +181,7 @@ bench.post('/bench/run', async (c) => {
       await sendEvent('progress', { message: 'Accuracy test complete.', percent: 95 });
 
       const resultPayload = {
-        runId: latestId ?? null,
+        runId, // Always UUID — frontend GET /bench/:id will use this directly
         model,
         hardware: hardwareLabel,
         speed: { promptTps: 12.56, genTps: 8.43, ttftMs: 200 },
@@ -226,7 +224,7 @@ bench.post('/bench/run', async (c) => {
     const hardwareLabel = `${hw.chip}, ${hw.cpuCoresPhysical} cores, ${ramGB}GB RAM`;
 
     const benchRun: BenchRun = {
-      runId: crypto.randomUUID(),
+      runId, // canonical UUID — shared between flow and GET lookup
       model,
       hardware: hardwareLabel,
       runtime: 'backend',
@@ -237,10 +235,10 @@ bench.post('/bench/run', async (c) => {
       accuracyPct: accuracyResult.score ?? 0,
     };
 
-    const actualRunId = await saveBenchRun(benchRun);
+    const savedRunId = await saveBenchRun(benchRun);
 
     const finalResult = {
-      runId: actualRunId,
+      runId: savedRunId ?? runId, // use saved UUID if available, otherwise return original
       model,
       hardware: hardwareLabel,
       speed: speedResult,
@@ -259,7 +257,7 @@ bench.get('/bench/history', async (c) => {
   try {
     const rows = await db`SELECT *, rowid as id FROM bench_runs ORDER BY created_at DESC LIMIT 50`;
     const runs = Array.from(rows ?? []).map((r: Record<string, unknown>) => ({
-      id: Number(r.id), run_id: String(r.run_id ?? ''), model: String(r.model_name ?? ''), hardware: String(r.hardware ?? ''),
+      run_id: String(r.run_id ?? ''), model: String(r.model_name ?? ''), hardware: String(r.hardware ?? ''),
       runtime: String(r.runtime ?? ''), prompt_tps: Number(r.speed_prompt_tps ?? 0), gen_tps: Number(r.speed_gen_tps ?? 0),
       ttft_ms: Number(r.speed_ttft_ms ?? 0), retention_pct: Number(r.retention_pct ?? 0), accuracy_pct: Number(r.accuracy_pct ?? 0), created_at: String(r.created_at ?? '')
     }));
@@ -269,53 +267,62 @@ bench.get('/bench/history', async (c) => {
   }
 });
 
-// GET /api/bench/:id — Lookup by run_id (UUID) with tests
+// GET /api/bench/:id — Lookup by run_id (UUID canonical form with numeric fallback for backward compat)
 bench.get('/bench/:id', async (c) => {
   const idParam = c.req.param('id');
 
-  // Try integer lookup (rowid) first if numeric ID is passed
-  if (/^\d+$/.test(idParam)) {
-    const parsedId = Number(idParam);
-    try {
-      const rows = await db`SELECT * FROM bench_runs WHERE rowid = ${parsedId} LIMIT 1`;
-      const runRaw = Array.from(rows ?? [])[0] as Record<string, unknown> | undefined;
-      if (!runRaw) return c.json({ error: 'Not found' }, 404);
-      const run = {
-        id: Number(runRaw.id), run_id: String(runRaw.run_id ?? ''), model: String(runRaw.model_name ?? ''), hardware: String(runRaw.hardware ?? ''),
-        runtime: String(runRaw.runtime ?? ''), prompt_tps: Number(runRaw.speed_prompt_tps ?? 0), gen_tps: Number(runRaw.speed_gen_tps ?? 0),
-        ttft_ms: Number(runRaw.speed_ttft_ms ?? 0), retention_pct: Number(runRaw.retention_pct ?? 0), accuracy_pct: Number(runRaw.accuracy_pct ?? 0), created_at: String(runRaw.created_at ?? '')
-      };
-      const tests = await db`SELECT * FROM bench_tests WHERE run_id = ${runRaw.run_id} ORDER BY category, name`;
-      return c.json({ run, tests: Array.from(tests ?? []) });
-    } catch (err) {
-      return c.json({ error: String(err) }, 500);
-    }
-  }
-
-  // UUID lookup by run_id column
+  // Canonical path: UUID lookup by run_id
   try {
     const rows = await db`SELECT * FROM bench_runs WHERE run_id = ${idParam} LIMIT 1`;
     const runRaw = Array.from(rows ?? [])[0] as Record<string, unknown> | undefined;
     if (!runRaw) return c.json({ error: 'Not found' }, 404);
+
     const run = {
       id: Number(runRaw.id), run_id: String(runRaw.run_id ?? ''), model: String(runRaw.model_name ?? ''), hardware: String(runRaw.hardware ?? ''),
       runtime: String(runRaw.runtime ?? ''), prompt_tps: Number(runRaw.speed_prompt_tps ?? 0), gen_tps: Number(runRaw.speed_gen_tps ?? 0),
       ttft_ms: Number(runRaw.speed_ttft_ms ?? 0), retention_pct: Number(runRaw.retention_pct ?? 0), accuracy_pct: Number(runRaw.accuracy_pct ?? 0), created_at: String(runRaw.created_at ?? '')
     };
+
     const tests = await db`SELECT * FROM bench_tests WHERE run_id = ${idParam} ORDER BY category, name`;
     return c.json({ run, tests: Array.from(tests ?? []) });
   } catch (err) {
+    // Fallback for backward compat — numeric rowid lookup
+    if (/^\d+$/.test(idParam)) {
+      const parsedId = Number(idParam);
+      try {
+        const rows = await db`SELECT * FROM bench_runs WHERE rowid = ${parsedId} LIMIT 1`;
+        const runRaw = Array.from(rows ?? [])[0] as Record<string, unknown> | undefined;
+        if (!runRaw) return c.json({ error: 'Not found' }, 404);
+        const run = {
+          id: Number(runRaw.id), run_id: String(runRaw.run_id ?? ''), model: String(runRaw.model_name ?? ''), hardware: String(runRaw.hardware ?? ''),
+          runtime: String(runRaw.runtime ?? ''), prompt_tps: Number(runRaw.speed_prompt_tps ?? 0), gen_tps: Number(runRaw.speed_gen_tps ?? 0),
+          ttft_ms: Number(runRaw.speed_ttft_ms ?? 0), retention_pct: Number(runRaw.retention_pct ?? 0), accuracy_pct: Number(runRaw.accuracy_pct ?? 0), created_at: String(runRaw.created_at ?? '')
+        };
+        const tests = await db`SELECT * FROM bench_tests WHERE run_id = ${runRaw.run_id} ORDER BY category, name`;
+        return c.json({ run, tests: Array.from(tests ?? []) });
+      } catch {
+        return c.json({ error: String(err) }, 500);
+      }
+    }
     return c.json({ error: String(err) }, 500);
   }
 });
 
 // DELETE /api/bench/:id — Delete benchmark run and associated tests
 bench.delete('/bench/:id', async (c) => {
-  const parsedId = parseInt(c.req.param('id'), 10);
-  if (isNaN(parsedId)) return c.json({ error: 'Invalid ID' }, 400);
+  const idParam = c.req.param('id');
+
   try {
-    await db`DELETE FROM bench_tests WHERE run_id = ${parsedId}`;
-    await db`DELETE FROM bench_runs WHERE rowid = ${parsedId}`;
+    // Try UUID lookup first if it looks like one (contains hyphens, length ~36)
+    if (idParam.length > 10 && !/^\d+$/.test(idParam)) {
+      await db`DELETE FROM bench_tests WHERE run_id = ${idParam}`;
+      await db`DELETE FROM bench_runs WHERE run_id = ${idParam}`;
+    } else {
+      const parsedId = parseInt(idParam, 10);
+      if (isNaN(parsedId)) return c.json({ error: 'Invalid ID' }, 400);
+      await db`DELETE FROM bench_tests WHERE run_id IN (SELECT run_id FROM bench_runs WHERE rowid = ${parsedId})`;
+      await db`DELETE FROM bench_runs WHERE rowid = ${parsedId}`;
+    }
     return c.json({ deleted: true });
   } catch (err) {
     return c.json({ error: String(err) }, 500);
