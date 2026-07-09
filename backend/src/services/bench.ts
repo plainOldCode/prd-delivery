@@ -1,7 +1,6 @@
 // src/services/bench.ts — Benchmark runner, 100% match to router imports (camelCase)
 
 import db from '../db/client';
-import crypto from 'crypto';
 
 export interface ModelInfo {
   name: string;

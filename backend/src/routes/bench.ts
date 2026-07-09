@@ -161,40 +161,54 @@ bench.post('/bench/run', async (c) => {
       /* bench_runs may not exist if initDb hasn't been called yet */
     }
 
-    return streamText(c, async (stream) => {
-      const sendEvent = async (event: string, data: object) => {
-        await stream.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
-      };
+    // Direct SSE Response for reliable parsing in tests/E2E — no streamText wrapper
+    const encoder = new TextEncoder();
+    const stream = new ReadableStream({
+      async start(controller) {
+        const send = (event: string, data: object) => {
+          controller.enqueue(encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`));
+        };
+        await new Promise(res => setTimeout(res, 10));
+        send('progress', { message: 'Initializing benchmark suite...', percent: 10 });
+        await new Promise(res => setTimeout(res, 20));
+        send('progress', { message: `Measuring speed for ${model}...`, percent: 20 });
+        await new Promise(res => setTimeout(res, 30));
+        send('progress', { message: 'Speed test complete.', percent: 40 });
+        await new Promise(res => setTimeout(res, 20));
+        send('progress', { message: `Evaluating context retention for ${model}...`, percent: 50 });
+        await new Promise(res => setTimeout(res, 30));
+        send('progress', { message: 'Retention test complete.', percent: 70 });
+        await new Promise(res => setTimeout(res, 20));
+        send('progress', { message: `Verifying accuracy for ${model}...`, percent: 80 });
+        await new Promise(res => setTimeout(res, 30));
+        send('progress', { message: 'Accuracy test complete.', percent: 95 });
 
-      await sendEvent('progress', { message: 'Initializing benchmark suite...', percent: 10 });
-      await new Promise(res => setTimeout(res, 300));
-      await sendEvent('progress', { message: `Measuring speed for ${model}...`, percent: 20 });
-      await new Promise(res => setTimeout(res, 500));
-      await sendEvent('progress', { message: 'Speed test complete.', percent: 40 });
-      await new Promise(res => setTimeout(res, 300));
-      await sendEvent('progress', { message: `Evaluating context retention for ${model}...`, percent: 50 });
-      await new Promise(res => setTimeout(res, 500));
-      await sendEvent('progress', { message: 'Retention test complete.', percent: 70 });
-      await new Promise(res => setTimeout(res, 300));
-      await sendEvent('progress', { message: `Verifying accuracy for ${model}...`, percent: 80 });
-      await new Promise(res => setTimeout(res, 500));
-      await sendEvent('progress', { message: 'Accuracy test complete.', percent: 95 });
+        const resultPayload = {
+          runId,
+          model,
+          hardware: hardwareLabel,
+          speed: { promptTps: 12.56, genTps: 8.43, ttftMs: 200 },
+          retention: { score: 78 },
+          accuracy: { score: 65 },
+          saved: true,
+        };
+        send('result', resultPayload);
+        await new Promise(res => setTimeout(res, 10));
+        send('progress', { message: 'Benchmark finished!', percent: 100 });
+        controller.close();
+      },
+    });
 
-      const resultPayload = {
-        runId, // Always UUID — frontend GET /bench/:id will use this directly
-        model,
-        hardware: hardwareLabel,
-        speed: { promptTps: 12.56, genTps: 8.43, ttftMs: 200 },
-        retention: { score: 78 },
-        accuracy: { score: 65 },
-        saved: true,
-      };
-      await sendEvent('result', resultPayload);
-      await new Promise(res => setTimeout(res, 200));
-      await sendEvent('progress', { message: 'Benchmark finished!', percent: 100 });
+    return new Response(stream, {
+      headers: {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        Connection: 'keep-alive',
+      },
     });
   }
 
+  // Real benchmark mode — uses Ollama/MLX backend
   return streamText(c, async (stream) => {
     const sendEvent = async (event: string, data: object) => {
       const payload = JSON.stringify(data);
@@ -223,7 +237,8 @@ bench.post('/bench/run', async (c) => {
     const ramGB = Math.round((hw.ramBytes / (1024 ** 3)) * 10) / 10;
     const hardwareLabel = `${hw.chip}, ${hw.cpuCoresPhysical} cores, ${ramGB}GB RAM`;
 
-    const runId = crypto.randomUUID(); // canonical UUID
+    const runId = crypto.randomUUID(); // UUID v4 — canonical form for GET lookup
+
     const benchRun: BenchRun = {
       runId,
       model,

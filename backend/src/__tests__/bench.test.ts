@@ -31,12 +31,19 @@ describe('LLM Benchmark API', () => {
             const { value, done } = await reader.read();
             if (done) break;
             buffer += decoder.decode(value, { stream: true });
-            const lines = buffer.split('\n\n');
-            buffer = lines.pop() || '';
-            for (const line of lines) {
-                const [eventLine, ...dataLines] = line.split('\n');
-                const event = eventLine?.replace('event: ', '').trim();
-                const dataStr = dataLines.join('\n').replace('data: ', '').trim();
+            const chunks = buffer.split('\n\n');
+            buffer = chunks.pop() || '';
+            for (const chunk of chunks) {
+                const lines = chunk.split('\n');
+                let event = '';
+                let dataStr = '';
+                for (const line of lines) {
+                    if (line.startsWith('event: ')) {
+                        event = line.slice(7).trim();
+                    } else if (line.startsWith('data: ')) {
+                        dataStr = line.slice(6).trim();
+                    }
+                }
                 if (event === 'result' && dataStr) {
                     const payload = JSON.parse(dataStr);
                     expect(payload.model).toBe('llama3:8b');
