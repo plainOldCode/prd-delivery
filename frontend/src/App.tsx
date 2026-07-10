@@ -4,10 +4,10 @@ import TasksPage from './pages/TasksPage';
 import BenchPage from './pages/BenchPage';
 import BenchHistoryPage, { BenchDetailPage } from './pages/BenchHistoryPage';
 
-/* ---------- BenchDetail wrappers — extract runId from URL ---------- */
+/* ---------- BenchDetail wrappers — extract runId from URL (string UUID) ---------- */
 function BenchDetailWrapper() {
 	const { runId } = useParams<{ runId: string }>();
-	return <BenchDetailPage runId={Number(runId)} />;
+	return <BenchDetailPage runId={runId ?? '0'} />;
 }
 
 /* ---------- Layout with Header ---------- */

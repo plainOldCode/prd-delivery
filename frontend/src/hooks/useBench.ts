@@ -59,7 +59,7 @@ export interface BenchRunResult {
 export interface BenchHistoryRow {
 	rowid?: number;
 	id: number;
-	run_id: number;
+	run_id: string | number;  // UUID string from backend, numeric fallback for backward compat
 	model: string;
 	hardware: string;
 	runtime: string;
@@ -133,8 +133,9 @@ export function useHistory() {
 	return useFetch<{ runs: BenchHistoryRow[] }>(() => get('/bench/history'));
 }
 
-/* ---------- useBenchDetail(runId) ---------- */
-export function useBenchDetail(runId: number) {
+/* ---------- useBenchDetail(runId) — supports both numeric id and UUID string ---------- */
+export function useBenchDetail(runIdParam: string | number) {
+	const runId = String(runIdParam);
 	return useFetch<BenchDetail>(() => get(`/bench/${runId}`));
 }
 

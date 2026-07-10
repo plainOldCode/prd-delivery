@@ -1,6 +1,6 @@
 // src/pages/BenchHistoryPage.tsx — Benchmark history list and detail (dark theme)
 import { Link } from 'react-router-dom';
-import { useHistory, BenchHistoryRow } from '../hooks/useBench';
+import { useHistory, useBenchDetail, BenchHistoryRow } from '../hooks/useBench';
 import { useState } from 'react';
 
 /* ---------- Row ---------- */
@@ -105,20 +105,14 @@ function ComparePanel({ runs }: { runs: BenchHistoryRow[] }) {
 }
 
 /* ---------- Detail Page (inline to avoid extra file) ---------- */
-function BenchDetailPage({ runId }: { runId: number }) {
-  const { data, loading, error } = useHistory();
-  const run = data?.runs.find((r) => r.id === runId || r.rowid === runId);
+function BenchDetailPage({ runId }: { runId: string | number }) {
+  // Fetch directly from API instead of relying on history cache — UUID may not be in cache yet
+  const { data, loading, error } = useBenchDetail(String(runId));
 
   if (loading) return <LoadingState />;
-  if (error) return <ErrorBanner message={error} />;
+  if (error || !data?.run) return <ErrorBanner message={error ?? 'Run not found'} />;
 
-  if (!run) {
-    return (
-       <div className="min-h-screen bg-[#0A0A0A] text-gray-200 flex items-center justify-center">
-         <p className="text-gray-500">Benchmark 결과를 찾을 수 없습니다.</p>
-       </div>
-     );
-   }
+  const run = data.run;
 
   const date = new Date(run.created_at).toLocaleString();
 
