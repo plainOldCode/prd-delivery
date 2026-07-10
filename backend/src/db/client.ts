@@ -49,8 +49,9 @@ export async function initDb() {
 		details     TEXT,
 		created_at  TEXT NOT NULL DEFAULT (datetime('now'))
 	)`;
+}
 
-	// Ensure indexes even on fresh DB from GHA runners
+export async function ensureIndexes() {
 	await db`CREATE INDEX IF NOT EXISTS idx_bench_model ON bench_runs(model_name)`;
 	await db`CREATE INDEX IF NOT EXISTS idx_bench_created ON bench_runs(created_at DESC)`;
 	await db`CREATE INDEX IF NOT EXISTS idx_bench_tests_run ON bench_tests(run_id)`;
@@ -58,5 +59,6 @@ export async function initDb() {
 
 // Auto-init on import so tests don't need to call initDb() manually
 await initDb();
+await ensureIndexes();
 
 export default db;
