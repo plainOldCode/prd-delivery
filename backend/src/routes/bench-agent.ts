@@ -3,7 +3,7 @@ import { Hono } from 'hono';
 import db from '../db/client';
 import { BenchRunRow } from '../db/types';
 import { stubModelList, runSpeedBench, listModels, saveBenchRun, BenchRun } from '../services/bench';
-import { validateBaseUrl } from './bench';
+import { validateBaseUrl, genUUID } from './bench';
 import { computeComposite, recommendModel, compareRuns, CompositeWeights } from '../services/advisor';
 import { sanitizeError } from '../middleware/error-handling';
 
@@ -76,7 +76,7 @@ agent.post('/bench/run/compact', async (c) => {
 	try {
 		const speedResult = await runSpeedBench(model, baseUrl);
 		const hwStr = body.hardware || `${body.runtime || 'ollama'}-unknown`;
-		const runId = crypto.randomUUID();
+		const runId = genUUID();
 		const benchRun: BenchRun = {
 			runId, model, hardware: hwStr, runtime: body.runtime || 'ollama',
 			promptTps: speedResult.promptTps, genTps: speedResult.genTps, ttftMs: speedResult.ttftMs,

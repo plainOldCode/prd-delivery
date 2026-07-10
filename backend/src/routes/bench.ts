@@ -11,13 +11,12 @@ if (ALLOWED_BASE_URLS.size === 0) {
   ALLOWED_BASE_URLS.add('http://localhost:11434');
 }
 
-/** UUID v4 generator — avoids crypto.randomUUID() which conflicts with bundler minification */
+/** UUID v4 generator — avoids crypto APIs which conflict with bundler minification */
 function genUUID(): string {
-  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
-    const r = (crypto.getRandomValues(new Uint8Array(1))[0] % 16) | 0;
-    return (c === 'x' ? r : (r & 0x3) | 0x8).toString(16);
-  });
+  return ([1e7]+ '-' + [1e3] + '-' + [1e3] + '-' + [1e3] + '-' + [1e8]).replace(/[0-9]/g, () => Math.floor(Math.random() * 16).toString(16));
 }
+
+export { genUUID };
 
 function validateBaseUrl(c: any, input?: string): { baseUrl: string; error?: string; status?: number } {
   const raw = typeof input === 'string' ? input : undefined;
